@@ -1,0 +1,101 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- FUNÇÕES AUXILIARES ---
+
+    // Verifica se é o Super Admin (Dona do sistema)
+    function isSuperAdmin() {
+      return request.auth != null && request.auth.token.email == 'atelie.arianeartes@gmail.com';
+    }
+
+    // Verifica se o usuário autenticado é dono dos dados
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // --- REGRAS GERAIS DO SISTEMA ---
+
+    // Configuração Global (Preços, Links de Pagamento da Landing Page)
+    // Leitura: Pública (necessário para a Landing Page carregar antes do login)
+    // Escrita: Apenas Super Admin
+    match /system/config {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // Usuários (Login e Aprovação)
+    match /users/{userId} {
+      // Usuário lê o próprio dado para saber se está aprovado
+      // Admin lê tudo para listar no painel
+      allow read: if isOwner(userId) || isSuperAdmin();
+      
+      // Criação livre (Registro)
+      allow create: if isOwner(userId);
+      
+      // Atualização (Aprovação) apenas Admin ou o próprio usuário
+      allow update: if isSuperAdmin() || isOwner(userId);
+      
+      // Exclusão apenas Admin
+      allow delete: if isSuperAdmin();
+    }
+
+    // --- DADOS DOS LOJISTAS (Multi-tenancy) ---
+    match /tenants/{tenantId} {
+      
+      // 1. PRODUTOS E CONFIGURAÇÕES DA LOJA ONLINE
+      // Precisam ser públicos para a Loja Online funcionar para visitantes (clientes finais)
+      
+      match /products/{document=**} {
+        allow read: if true; // Público para a loja
+        allow write: if isOwner(tenantId);
+      }
+      
+      match /settings/{document=**} {
+        allow read: if true; // Público para carregar logo/cores na loja
+        allow write: if isOwner(tenantId);
+      }
+
+      // 2. DADOS PRIVADOS DE GESTÃO
+      // Apenas o dono pode ler/escrever. Visitantes da loja NÃO acessam isso.
+      
+      match /quotations/{document=**} {
+        allow read, write: if isOwner(tenantId);
+      }
+      
+      match /customers/{document=**} {
+        allow read, write: if isOwner(tenantId);
+      }
+      
+      match /stock/{document=**} {
+        allow read, write: if isOwner(tenantId);
+      }
+      
+      match /stock_movements/{document=**} {
+        allow read, write: if isOwner(tenantId);
+      }
+      
+      match /coupons/{document=**} {
+        allow read, write: if isOwner(tenantId);
+      }
+      
+      match /payables/{document=**} {
+        allow read, write: if isOwner(tenantId);
+      }
+      
+      match /fonts/{document=**} {
+        allow read, write: if isOwner(tenantId);
+      }
+      
+      match /prospects/{document=**} {
+        allow create: if true; // Public visitors can sign up for promotions
+        allow read, update, delete: if isOwner(tenantId);
+      }
+
+      match /message_templates/{document=**} {
+        allow read, write: if isOwner(tenantId);
+      }
+    }
+  }
+}
