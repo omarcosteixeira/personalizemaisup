@@ -23,6 +23,30 @@ const SettingsPage: React.FC = () => {
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [sessionDataText, setSessionDataText] = useState('');
   const [isInjecting, setIsInjecting] = useState(false);
+  const [botStatus, setBotStatus] = useState<string>('desconectado');
+
+  useEffect(() => {
+    let interval: any;
+    if (activeTab === 'ai' && settings.webhookUrl) {
+      const sessao = settings.botSessionId || 'vendas';
+      const checkStatus = async () => {
+        try {
+          const res = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/status/${sessao}`);
+          const data = await res.json();
+          if (data.status) {
+            setBotStatus(data.status);
+            if (data.qr_imagem_url) setQrImageUrl(data.qr_imagem_url);
+            if (data.codigo_emparelhamento) setPairingCode(data.codigo_emparelhamento);
+          }
+        } catch (e) {
+          console.error("Erro no polling de status:", e);
+        }
+      };
+      checkStatus();
+      interval = setInterval(checkStatus, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [activeTab, settings.webhookUrl, settings.botSessionId]);
 
   // Gera o link único da loja
   const storeLink = `${window.location.origin}/?store=${auth.currentUser?.uid}`;
@@ -456,8 +480,37 @@ const SettingsPage: React.FC = () => {
               <hr className="border-slate-100" />
 
               <div className="space-y-4">
-                <h5 className="font-bold text-slate-700 text-sm">Integração do Bot (Render / Local)</h5>
+                <h5 className="font-bold text-slate-700 text-sm">Integração do Bot (Gestão Pro)</h5>
                 
+                <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${botStatus === 'conectado' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+                    <div>
+                      <h6 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Status da Conexão</h6>
+                      <p className="text-sm font-bold text-slate-700 capitalize">{botStatus.replace('_', ' ')}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={async () => {
+                       if (!settings.webhookUrl || !settings.webhookSecret) return alert("Configure o webhook.");
+                       const sessao = settings.botSessionId || 'vendas';
+                       setQrImageUrl('');
+                       setPairingCode('');
+                       try {
+                         await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/iniciar-sessao`, {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify({ idSessao: sessao, senha: settings.webhookSecret })
+                         });
+                         alert("🔄 Iniciando sessão... Aguarde o QR Code aparecer.");
+                       } catch(e) { alert("Erro ao iniciar."); }
+                    }}
+                    className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-200"
+                  >
+                    Gerar QR Code
+                  </button>
+                </div>
+
                 <div className="flex items-center gap-2 mb-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
                   <button 
                     onClick={async () => {
@@ -492,12 +545,12 @@ const SettingsPage: React.FC = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2 col-span-1 md:col-span-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Link do Webhook (Render / Local)</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Link do Webhook (Gestão Pro)</label>
                     <input 
                       type="url"
                       value={settings.webhookUrl || ''} 
                       onChange={e => setSettings({...settings, webhookUrl: e.target.value})}
-                      placeholder="Ex: https://ane-bot-atelie.onrender.com ou http://localhost:10000"
+                      placeholder="Ex: https://seu-bot.up.railway.app"
                       className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm"
                     />
                   </div>
@@ -593,7 +646,7 @@ const SettingsPage: React.FC = () => {
                       type="tel"
                       value={pairingPhone}
                       onChange={e => setPairingPhone(e.target.value.replace(/\D/g, ''))}
-                      placeholder="Número (Ex: 5511999999999)"
+                      placeholder="Número (Ex: 5521999999999)"
                       className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-xs font-medium"
                     />
                     <button 
@@ -663,17 +716,13 @@ const SettingsPage: React.FC = () => {
                   <div className="w-full pt-6 border-t border-slate-100 space-y-4">
                     <div className="flex items-center justify-between">
                       <h5 className="text-sm font-black text-slate-700 flex items-center gap-2">
-                        <Key className="w-4 h-4 text-indigo-500" /> Injeção de Sessão (Manual)
+                        <Key className="w-4 h-4 text-indigo-500" /> Injeção de Sessão (creds.json)
                       </h5>
-                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase rounded">Novo Metodo</span>
+                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase rounded">MIGRAÇÃO</span>
                     </div>
                     
                     <p className="text-[11px] text-slate-500 leading-relaxed bg-blue-50 p-3 rounded-xl border border-blue-100">
-                      <b>Instruções Anti-Ban:</b><br/>
-                      1. Abra o WhatsApp Web em Aba Anônima.<br/>
-                      2. Use a extensão <b>PESK Linker</b> para copiar os dados da sessão.<br/>
-                      3. Cole no campo abaixo e clique em Injetar.<br/>
-                      4. <b>CRÍTICO:</b> Feche a aba do WhatsApp Web imediatamente após injetar!
+                      <b>Importante:</b> Cole o conteúdo do seu arquivo <b>creds.json</b> para injetar a sessão diretamente.
                     </p>
 
                     <textarea

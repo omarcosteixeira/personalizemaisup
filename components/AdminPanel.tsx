@@ -20,6 +20,33 @@ const AdminPanel: React.FC = () => {
   const [loadingCodes, setLoadingCodes] = useState<Record<string, boolean>>({});
   const [sessionDataTexts, setSessionDataTexts] = useState<Record<string, string>>({});
   const [injectingSessions, setInjectingSessions] = useState<Record<string, boolean>>({});
+  const [botStatuses, setBotStatuses] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let interval: any;
+    if (activeSubTab === 'bot' && settings.webhookUrl) {
+      const checkStatuses = async () => {
+        const updatedStatuses: Record<string, string> = {};
+        for (const sessao of (settings.botSessions || [])) {
+          try {
+            const res = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/status/${sessao}`);
+            const data = await res.json();
+            if (data.status) {
+              updatedStatuses[sessao] = data.status;
+              if (data.qr_imagem_url) setQrCodes(prev => ({...prev, [sessao]: data.qr_imagem_url}));
+              if (data.codigo_emparelhamento) setPairingCodes(prev => ({...prev, [sessao]: data.codigo_emparelhamento}));
+            }
+          } catch (e) {
+            console.error(`Erro polling status ${sessao}:`, e);
+          }
+        }
+        setBotStatuses(prev => ({...prev, ...updatedStatuses}));
+      };
+      checkStatuses();
+      interval = setInterval(checkStatuses, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [activeSubTab, settings.webhookUrl, settings.botSessions]);
   
   // Config States
   const [sysConfig, setSysConfig] = useState<SystemConfig>({
@@ -276,7 +303,11 @@ const AdminPanel: React.FC = () => {
                 {(settings.botSessions || []).map((sessao: string) => (
                   <div key={sessao} className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-between items-start gap-4 shadow-sm">
                     <div className="flex justify-between items-center w-full">
-                      <h5 className="font-bold text-slate-800 text-lg">{sessao}</h5>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${botStatuses[sessao] === 'conectado' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+                        <h5 className="font-bold text-slate-800 text-lg">{sessao}</h5>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">({botStatuses[sessao] || 'offline'})</span>
+                      </div>
                       <button 
                         onClick={() => {
                           if (confirm(`Remover sessão ${sessao}?`)) {
@@ -349,7 +380,7 @@ const AdminPanel: React.FC = () => {
                           type="tel"
                           value={pairingPhones[sessao] || ''}
                           onChange={e => setPairingPhones(prev => ({...prev, [sessao]: e.target.value.replace(/\D/g, '')}))}
-                          placeholder="Número 5511..."
+                          placeholder="DDD + Número"
                           className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
                         />
                         <button 
@@ -405,13 +436,13 @@ const AdminPanel: React.FC = () => {
                         </button>
                       </div>
                       
-                      {qrCodes[sessao] && (
+                      {qrCodes[sessao] && botStatuses[sessao] === 'aguardando_qr' && (
                         <div className="mt-2 p-2 bg-white border border-slate-200 rounded-xl flex justify-center">
                            <img src={qrCodes[sessao]} alt={`QR Code ${sessao}`} className="w-48 h-48 rounded-lg shadow-sm" />
                         </div>
                       )}
 
-                      {pairingCodes[sessao] && (
+                      {pairingCodes[sessao] && botStatuses[sessao] === 'aguardando_codigo' && (
                         <div className="mt-2 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex flex-col items-center">
                            <p className="text-[10px] font-bold text-indigo-400 uppercase mb-1">Código de Pareamento</p>
                            <div className="text-2xl font-black tracking-widest text-indigo-600 font-mono">
@@ -421,59 +452,58 @@ const AdminPanel: React.FC = () => {
                       )}
 
                       <div className="mt-2 pt-4 border-t border-slate-100 space-y-3">
-                         <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Injeção Manual</span>
-                            <span className="px-1.5 py-0.5 bg-blue-100 text-blue-600 text-[8px] font-black uppercase rounded">PESK Linker</span>
-                         </div>
-                         <textarea 
-                           value={sessionDataTexts[sessao] || ''}
-                           onChange={e => setSessionDataTexts(prev => ({...prev, [sessao]: e.target.value}))}
-                           placeholder="Cole o JSON da extensão aqui..."
-                           className="w-full h-20 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-[9px] font-mono"
-                         />
-                         <button 
-                           disabled={injectingSessions[sessao] || !sessionDataTexts[sessao]}
-                           onClick={async () => {
-                             if (!settings.webhookUrl || !settings.webhookSecret) return alert("Configure as chaves do bot.");
-                             
-                             let sessionDataObj;
-                             try {
-                               sessionDataObj = JSON.parse(sessionDataTexts[sessao]);
-                             } catch (e) {
-                               return alert("JSON inválido.");
-                             }
+                          <div className="flex items-center justify-between">
+                             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Injeção Manual (creds.json)</span>
+                          </div>
+                          <textarea 
+                            value={sessionDataTexts[sessao] || ''}
+                            onChange={e => setSessionDataTexts(prev => ({...prev, [sessao]: e.target.value}))}
+                            placeholder='{ "creds": { ... } }'
+                            className="w-full h-20 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-[9px] font-mono"
+                          />
+                          <button 
+                            disabled={injectingSessions[sessao] || !sessionDataTexts[sessao]}
+                            onClick={async () => {
+                              if (!settings.webhookUrl || !settings.webhookSecret) return alert("Configure as chaves do bot.");
+                              
+                              let sessionDataObj;
+                              try {
+                                sessionDataObj = JSON.parse(sessionDataTexts[sessao]);
+                              } catch (e) {
+                                return alert("JSON inválido.");
+                              }
 
-                             setInjectingSessions(prev => ({...prev, [sessao]: true}));
-                             
-                             try {
-                               const response = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/injetar-sessao`, {
-                                 method: 'POST',
-                                 headers: { 'Content-Type': 'application/json' },
-                                 body: JSON.stringify({
-                                   idSessao: sessao,
-                                   senha: settings.webhookSecret,
-                                   sessionData: sessionDataObj
-                                 })
-                               });
+                              setInjectingSessions(prev => ({...prev, [sessao]: true}));
+                              
+                              try {
+                                const response = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/injetar-sessao`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    idSessao: sessao,
+                                    senha: settings.webhookSecret,
+                                    credsJson: sessionDataObj
+                                  })
+                                });
 
-                               const result = await response.json();
+                                const result = await response.json();
 
-                               if (response.ok) {
-                                 alert(`✅ Sessão ${sessao} injetada!\n\nFECHE A ABA DO WHATSAPP WEB AGORA!`);
-                                 setSessionDataTexts(prev => ({...prev, [sessao]: ''}));
-                               } else {
-                                 alert(`❌ Erro: ${result.erro || result.mensagem}`);
-                               }
-                             } catch (error) {
-                               alert("❌ Erro de comunicação.");
-                             } finally {
-                               setInjectingSessions(prev => ({...prev, [sessao]: false}));
-                             }
-                           }}
-                           className="w-full py-3 bg-slate-800 text-white rounded-xl text-[10px] font-bold hover:bg-slate-900 disabled:opacity-50"
-                         >
-                           {injectingSessions[sessao] ? 'Injetando...' : 'Injetar Sessão'}
-                         </button>
+                                if (response.ok) {
+                                  alert(`✅ Sucesso na injeção da sessão ${sessao}.`);
+                                  setSessionDataTexts(prev => ({...prev, [sessao]: ''}));
+                                } else {
+                                  alert(`❌ Erro: ${result.erro || result.mensagem}`);
+                                }
+                              } catch (error) {
+                                alert("❌ Erro de comunicação.");
+                              } finally {
+                                setInjectingSessions(prev => ({...prev, [sessao]: false}));
+                              }
+                            }}
+                            className="w-full py-3 bg-slate-800 text-white rounded-xl text-[10px] font-bold hover:bg-slate-900 disabled:opacity-50"
+                          >
+                            {injectingSessions[sessao] ? 'Injetando...' : 'Injetar creds.json'}
+                          </button>
                       </div>
                     </div>
                   </div>
