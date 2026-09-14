@@ -65,6 +65,15 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
   const [clientOrders, setClientOrders] = useState<Quotation[]>([]);
   const [isFetchingOrders, setIsFetchingOrders] = useState(false);
 
+  useEffect(() => {
+    try {
+      // @ts-ignore
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch (e) {
+      console.error('AdSense error:', e);
+    }
+  }, []);
+
   const localSettings = storage.getSettings();
   const settings = propSettings || localSettings;
 
@@ -511,6 +520,15 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
           <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">
             © {new Date().getFullYear()} {settings.businessName} - Todos os direitos reservados.
           </p>
+
+          {/* AdSense Footer Unit */}
+          <div className="mt-12 w-full overflow-hidden flex justify-center">
+            <ins className="adsbygoogle"
+                 style={{ display: 'block', minWidth: '300px', minHeight: '100px' }}
+                 data-ad-client="ca-pub-4782258159813118"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+          </div>
         </div>
       </footer>
 
