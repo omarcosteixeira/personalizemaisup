@@ -69,7 +69,9 @@ export const pdfService = {
         const hM = unit === 'cm' ? item.height / 100 : item.height;
         const wM = unit === 'cm' ? item.width / 100 : item.width;
         const area = item.areaM2 || (hM * wM * item.quantity);
-        medidasStr = `${item.height}x${item.width}${unit}\n(${area.toFixed(2)} m²)`;
+        const rawCalc = area * item.unitPrice;
+        const isMinTiragem = rawCalc < 25 && item.total === 25;
+        medidasStr = `${item.height}x${item.width}${unit}\n(${area.toFixed(2)} m²)${isMinTiragem ? '\n[Tiragem Mínima]' : ''}`;
       }
 
       return [

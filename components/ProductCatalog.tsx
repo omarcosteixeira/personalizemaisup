@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Product, PricingMode } from '../types';
 import { storage } from '../services/storageService';
 import { 
@@ -24,7 +24,10 @@ import {
   MoreVertical,
   FileSpreadsheet,
   Eye,
-  EyeOff
+  EyeOff,
+  Search,
+  Tag,
+  Filter
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import * as XLSX from 'xlsx';
@@ -41,12 +44,17 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
 
+  // Categorias do sistema
+  const [availableCategories, setAvailableCategories] = useState<string[]>(() => storage.getProductCategories());
+  const [selectedFilterCategory, setSelectedFilterCategory] = useState<string>('TODAS');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState(0);
   const [productionCost, setProductionCost] = useState(0);
   const [mode, setMode] = useState<PricingMode>(PricingMode.AREA);
-  const [category, setCategory] = useState('');
+  const [category, setCategory] = useState(() => availableCategories[0] || 'Geral');
   const [imageUrl, setImageUrl] = useState('');
   const [isHighlighted, setIsHighlighted] = useState(false);
   const [hiddenInStore, setHiddenInStore] = useState(false);
@@ -59,13 +67,29 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
   const kidsSizes = ['2', '4', '6', '8', '10', '12', '14', '16'];
   const adultSizes = ['PP', 'P', 'M', 'G', 'GG', 'G1', 'G2', 'G3'];
 
+  useEffect(() => {
+    setAvailableCategories(storage.getProductCategories());
+  }, [isAdding, products]);
+
+  const handleAddNewCategoryPrompt = () => {
+    const newCat = window.prompt('Digite o nome da nova categoria:');
+    if (newCat && newCat.trim()) {
+      const trimmed = newCat.trim();
+      storage.saveProductCategory(trimmed);
+      const updated = storage.getProductCategories();
+      setAvailableCategories(updated);
+      setCategory(trimmed);
+    }
+  };
+
   const resetForm = () => {
     setName(''); 
     setDescription('');
     setPrice(0); 
     setProductionCost(0); 
     setMode(PricingMode.AREA);
-    setCategory(''); 
+    const cats = storage.getProductCategories();
+    setCategory(cats[0] || 'Geral'); 
     setImageUrl(''); 
     setIsHighlighted(false);
     setHiddenInStore(false);
@@ -268,8 +292,36 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none" />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Categoria</label>
-              <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl" />
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Categoria</label>
+                <button
+                  type="button"
+                  onClick={handleAddNewCategoryPrompt}
+                  className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                >
+                  + Nova
+                </button>
+              </div>
+              <select 
+                value={category} 
+                onChange={(e) => {
+                  if (e.target.value === '__NEW__') {
+                    handleAddNewCategoryPrompt();
+                  } else {
+                    setCategory(e.target.value);
+                  }
+                }} 
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-sm"
+              >
+                <option value="" disabled>Selecione uma categoria...</option>
+                {category && !availableCategories.includes(category) && (
+                  <option value={category}>{category}</option>
+                )}
+                {availableCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+                <option value="__NEW__" className="text-indigo-600 font-bold">+ Criar nova categoria...</option>
+              </select>
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cobrança</label>
@@ -339,35 +391,85 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
         </div>
       )}
 
+      {/* Search and Category Filter Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
+        <div className="relative w-full md:w-80">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar por nome ou categoria..."
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+          />
+        </div>
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <Tag className="w-4 h-4 text-indigo-600 shrink-0" />
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">Categoria:</span>
+          <select
+            value={selectedFilterCategory}
+            onChange={(e) => setSelectedFilterCategory(e.target.value)}
+            className="w-full md:w-auto p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="TODAS">Todas as Categorias ({products.length})</option>
+            {availableCategories.map(cat => {
+              const count = products.filter(p => p.category?.trim().toLowerCase() === cat.trim().toLowerCase()).length;
+              return (
+                <option key={cat} value={cat}>{cat} ({count})</option>
+              );
+            })}
+          </select>
+        </div>
+      </div>
+
       {/* Mobile Card List View */}
       <div className="lg:hidden space-y-3">
-        {products.map(p => {
-          const profit = p.price - p.productionCost;
-          const margin = p.price > 0 ? (profit / p.price) * 100 : 0;
-          return (
-            <div key={p.id} className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-4 group">
-              <div className="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden flex items-center justify-center shrink-0">
-                {p.imageUrl ? <img src={p.imageUrl} className="w-full h-full object-cover" /> : <ImageIcon className="w-6 h-6 text-slate-200" />}
+        {(() => {
+          const filtered = products.filter(p => {
+            const matchesSearch = !searchQuery.trim() || 
+              p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+              (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()));
+            const matchesCategory = selectedFilterCategory === 'TODAS' || 
+              p.category?.trim().toLowerCase() === selectedFilterCategory.trim().toLowerCase();
+            return matchesSearch && matchesCategory;
+          });
+
+          if (filtered.length === 0) {
+            return (
+              <div className="p-8 text-center text-slate-400 bg-white rounded-2xl border border-slate-200">
+                <p className="text-sm font-bold">Nenhum produto encontrado nesta categoria ou busca.</p>
               </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-bold text-slate-800 truncate">{p.name}</h4>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[11px] font-black text-indigo-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.price)}</span>
-                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${margin > 40 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>+{margin.toFixed(0)}%</span>
+            );
+          }
+
+          return filtered.map(p => {
+            const profit = p.price - p.productionCost;
+            const margin = p.price > 0 ? (profit / p.price) * 100 : 0;
+            return (
+              <div key={p.id} className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-4 group">
+                <div className="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden flex items-center justify-center shrink-0">
+                  {p.imageUrl ? <img src={p.imageUrl} className="w-full h-full object-cover" /> : <ImageIcon className="w-6 h-6 text-slate-200" />}
                 </div>
-                <div className="flex gap-1 mt-1.5 items-center">
-                  {p.isHighlighted && <Star className="w-3 h-3 text-yellow-400 fill-current" />}
-                  {p.hiddenInStore && <EyeOff className="w-3 h-3 text-slate-300" />}
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{p.category}</span>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-bold text-slate-800 truncate">{p.name}</h4>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[11px] font-black text-indigo-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.price)}</span>
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${margin > 40 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>+{margin.toFixed(0)}%</span>
+                  </div>
+                  <div className="flex gap-1 mt-1.5 items-center">
+                    {p.isHighlighted && <Star className="w-3 h-3 text-yellow-400 fill-current" />}
+                    {p.hiddenInStore && <EyeOff className="w-3 h-3 text-slate-300" />}
+                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{p.category}</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button onClick={() => handleEdit(p)} className="p-2.5 bg-slate-50 text-slate-400 rounded-xl"><Edit2 className="w-4 h-4"/></button>
+                  <button onClick={() => { if(confirm('Excluir?')) { storage.deleteProduct(p.id); onUpdate(); } }} className="p-2.5 bg-red-50 text-red-300 rounded-xl"><Trash2 className="w-4 h-4"/></button>
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
-                <button onClick={() => handleEdit(p)} className="p-2.5 bg-slate-50 text-slate-400 rounded-xl"><Edit2 className="w-4 h-4"/></button>
-                <button onClick={() => { if(confirm('Excluir?')) { storage.deleteProduct(p.id); onUpdate(); } }} className="p-2.5 bg-red-50 text-red-300 rounded-xl"><Trash2 className="w-4 h-4"/></button>
-              </div>
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
       </div>
 
       {/* Desktop Table View */}
@@ -383,37 +485,58 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {products.map(p => {
-               const profit = p.price - p.productionCost;
-               const margin = p.price > 0 ? (profit / p.price) * 100 : 0;
-               return (
-                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 overflow-hidden shrink-0">
-                      {p.imageUrl ? <img src={p.imageUrl} className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-slate-200" />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-700">{p.name}</p>
-                      <p className="text-[9px] text-slate-400 uppercase font-black">{p.category}</p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-right font-black text-indigo-700">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.price)}</td>
-                  <td className="px-6 py-4 text-right">
-                    <span className={`text-[11px] font-black ${margin > 30 ? 'text-emerald-600' : 'text-amber-500'}`}>{margin.toFixed(0)}%</span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg ${p.hiddenInStore ? 'bg-slate-100 text-slate-400' : 'bg-emerald-50 text-emerald-600'}`}>
-                      {p.hiddenInStore ? 'Oculto' : 'Visível'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 flex justify-center gap-2">
-                    <button onClick={() => toggleHighlight(p)} className={`p-2 rounded-xl ${p.isHighlighted ? 'bg-yellow-50 text-yellow-500' : 'text-slate-300'}`} title="Destacar"><Star className="w-4 h-4 fill-current"/></button>
-                    <button onClick={() => handleEdit(p)} className="p-2 text-slate-400 hover:text-indigo-600" title="Editar"><Edit2 className="w-4 h-4"/></button>
-                    <button onClick={() => { if(confirm('Excluir?')) { storage.deleteProduct(p.id); onUpdate(); } }} className="p-2 text-slate-400 hover:text-red-500" title="Excluir"><Trash2 className="w-4 h-4"/></button>
-                  </td>
-                </tr>
-               );
-            })}
+            {(() => {
+              const filtered = products.filter(p => {
+                const matchesSearch = !searchQuery.trim() || 
+                  p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                  (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()));
+                const matchesCategory = selectedFilterCategory === 'TODAS' || 
+                  p.category?.trim().toLowerCase() === selectedFilterCategory.trim().toLowerCase();
+                return matchesSearch && matchesCategory;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-bold text-sm">
+                      Nenhum produto encontrado nesta categoria ou busca.
+                    </td>
+                  </tr>
+                );
+              }
+
+              return filtered.map(p => {
+                const profit = p.price - p.productionCost;
+                const margin = p.price > 0 ? (profit / p.price) * 100 : 0;
+                return (
+                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 overflow-hidden shrink-0">
+                        {p.imageUrl ? <img src={p.imageUrl} className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-slate-200" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">{p.name}</p>
+                        <p className="text-[9px] text-slate-400 uppercase font-black">{p.category}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right font-black text-indigo-700">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.price)}</td>
+                    <td className="px-6 py-4 text-right">
+                      <span className={`text-[11px] font-black ${margin > 30 ? 'text-emerald-600' : 'text-amber-500'}`}>{margin.toFixed(0)}%</span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg ${p.hiddenInStore ? 'bg-slate-100 text-slate-400' : 'bg-emerald-50 text-emerald-600'}`}>
+                        {p.hiddenInStore ? 'Oculto' : 'Visível'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 flex justify-center gap-2">
+                      <button onClick={() => toggleHighlight(p)} className={`p-2 rounded-xl ${p.isHighlighted ? 'bg-yellow-50 text-yellow-500' : 'text-slate-300'}`} title="Destacar"><Star className="w-4 h-4 fill-current"/></button>
+                      <button onClick={() => handleEdit(p)} className="p-2 text-slate-400 hover:text-indigo-600" title="Editar"><Edit2 className="w-4 h-4"/></button>
+                      <button onClick={() => { if(confirm('Excluir?')) { storage.deleteProduct(p.id); onUpdate(); } }} className="p-2 text-slate-400 hover:text-red-500" title="Excluir"><Trash2 className="w-4 h-4"/></button>
+                    </td>
+                  </tr>
+                );
+              });
+            })()}
           </tbody>
         </table>
       </div>

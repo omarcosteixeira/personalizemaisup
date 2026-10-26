@@ -86,7 +86,9 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
     const hM = m2Unit === 'cm' ? m2Height / 100 : m2Height;
     const wM = m2Unit === 'cm' ? m2Width / 100 : m2Width;
     const areaTotal = hM * wM * m2Quantity;
-    const totalPrice = areaTotal * m2ModalProduct.price;
+    const rawPrice = areaTotal * m2ModalProduct.price;
+    // Tiragem mínima de R$ 25,00 para M²
+    const totalPrice = Math.max(25, rawPrice);
 
     const newItem: QuotationItem = {
       id: Math.random().toString(36).substr(2, 9),
@@ -118,7 +120,9 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
           const hM = item.unitDimension === 'cm' ? item.height / 100 : item.height;
           const wM = item.unitDimension === 'cm' ? item.width / 100 : item.width;
           newAreaM2 = hM * wM * qty;
-          newTotal = newAreaM2 * item.unitPrice;
+          const rawPrice = newAreaM2 * item.unitPrice;
+          // Tiragem mínima de R$ 25,00 para M²
+          newTotal = Math.max(25, rawPrice);
         }
         return { ...item, quantity: qty, areaM2: newAreaM2, total: newTotal };
       }
@@ -239,15 +243,24 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
               const hM = unit === 'cm' ? item.height! / 100 : item.height!;
               const wM = unit === 'cm' ? item.width! / 100 : item.width!;
               const itemM2 = item.areaM2 || (hM * wM * item.quantity);
+              const rawPrice = hM * wM * item.quantity * item.unitPrice;
+              const isMinTiragem = isItemM2 && rawPrice < 25 && item.total === 25;
 
               return (
                 <div key={item.id} className="flex justify-between items-start group">
                   <div className="flex-1 pr-2">
                     <p className="text-sm font-bold text-slate-800 leading-tight">{item.productName}</p>
                     {isItemM2 ? (
-                      <p className="text-[10px] text-indigo-600 font-mono font-bold mt-1">
-                        📐 {item.height}×{item.width}{unit} ({itemM2.toFixed(2)} m²) • {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.unitPrice)}/m²
-                      </p>
+                      <div className="mt-1 space-y-0.5">
+                        <p className="text-[10px] text-indigo-600 font-mono font-bold">
+                          📐 {item.height}×{item.width}{unit} ({itemM2.toFixed(2)} m²) • {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.unitPrice)}/m²
+                        </p>
+                        {isMinTiragem && (
+                          <span className="inline-block px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded text-[9px] font-black uppercase">
+                            Tiragem Mínima R$ 25,00
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <p className="text-xs text-slate-400">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.unitPrice)}/un</p>
                     )}
@@ -258,7 +271,12 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
                       <span className="text-xs font-bold w-6 text-center">{item.quantity}</span>
                       <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="p-1 hover:text-indigo-600"><Plus className="w-3 h-3"/></button>
                     </div>
-                    <p className="text-sm font-black text-slate-700">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.total)}</p>
+                    <div className="text-right">
+                      <p className="text-sm font-black text-slate-700">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.total)}</p>
+                      {isMinTiragem && (
+                        <span className="text-[9px] font-bold text-amber-600 block">Min. R$ 25</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -444,7 +462,10 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
                 const wM = m2Unit === 'cm' ? m2Width / 100 : m2Width;
                 const areaPerPiece = hM * wM;
                 const areaTotal = areaPerPiece * m2Quantity;
-                const totalVal = areaTotal * m2ModalProduct.price;
+                const rawVal = areaTotal * m2ModalProduct.price;
+                const hasDimensions = hM > 0 && wM > 0;
+                const totalVal = hasDimensions ? Math.max(25, rawVal) : 0;
+                const isMinimumApplied = hasDimensions && rawVal < 25;
 
                 return (
                   <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-100 space-y-2">
@@ -455,8 +476,21 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
                     <div className="text-[10px] text-slate-400 font-mono">
                       Cálculo: {hM.toFixed(2)}m (Alt) × {wM.toFixed(2)}m (Comp) × {m2Quantity} un × {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(m2ModalProduct.price)}
                     </div>
+                    {isMinimumApplied && (
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-[10px] font-black uppercase">
+                        <span>Tiragem mínima aplicada: R$ 25,00</span>
+                        <span className="line-through text-amber-700/70 font-normal">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(rawVal)}
+                        </span>
+                      </div>
+                    )}
                     <div className="pt-2 border-t border-indigo-100 flex justify-between items-end">
-                      <span className="text-[10px] font-black text-indigo-900 uppercase">Valor Total:</span>
+                      <div>
+                        <span className="text-[10px] font-black text-indigo-900 uppercase block">Valor Total:</span>
+                        {isMinimumApplied && (
+                          <span className="text-[9px] font-bold text-amber-700">Tiragem mínima (R$ 25,00)</span>
+                        )}
+                      </div>
                       <span className="text-2xl font-black text-indigo-900">
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalVal)}
                       </span>

@@ -186,6 +186,7 @@ export interface AppSettings {
     accessToken?: string;
     autoSendLink?: boolean;
   };
+  productCategories?: string[];
 }
 
 export interface StockItem {

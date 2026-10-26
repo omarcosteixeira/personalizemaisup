@@ -5,6 +5,19 @@ import {
   collection, doc, setDoc, getDocs, deleteDoc, getDoc, query, orderBy 
 } from 'firebase/firestore';
 
+export const DEFAULT_PRODUCT_CATEGORIES: string[] = [
+  'Banners & Lonas',
+  'Adesivos & Rótulos',
+  'Placas & Sinalização',
+  'Brindes & Personalizados',
+  'Papelaria Corporativa',
+  'Camisetas & Vestuário',
+  'Impressão Digital',
+  'Cartões de Visita',
+  'Panfletos & Folders',
+  'Geral'
+];
+
 const DEFAULT_SETTINGS: AppSettings = {
   businessName: 'Personalize +',
   address: 'Rua das Impressões, 123 - Centro',
@@ -40,7 +53,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     provider: 'none',
     accessToken: '',
     autoSendLink: false
-  }
+  },
+  productCategories: DEFAULT_PRODUCT_CATEGORIES
 };
 
 const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
@@ -218,6 +232,88 @@ export const storage = {
   saveSettings: (s: AppSettings) => {
     localStorage.setItem(storage.getLocalKey('settings'), JSON.stringify(s));
     syncToFirebase('settings', 'global', s);
+  },
+
+  getProductCategories: (): string[] => {
+    const settings = storage.getSettings();
+    let savedCats: string[] = settings.productCategories || [];
+
+    const localKey = storage.getLocalKey('product_categories');
+    const localData = localStorage.getItem(localKey);
+    if (localData) {
+      try {
+        const parsed = JSON.parse(localData);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          savedCats = Array.from(new Set([...savedCats, ...parsed]));
+        }
+      } catch (e) {}
+    }
+
+    // Aproveitar as categorias já criadas nos produtos do sistema
+    const products = storage.getProducts();
+    const productCategories = products
+      .map(p => p.category?.trim())
+      .filter(Boolean) as string[];
+
+    const combined = Array.from(
+      new Set([
+        ...savedCats,
+        ...productCategories,
+        ...(savedCats.length === 0 && productCategories.length === 0 ? DEFAULT_PRODUCT_CATEGORIES : [])
+      ])
+    ).filter(c => c && c.trim().length > 0);
+
+    return combined.length > 0 ? combined : DEFAULT_PRODUCT_CATEGORIES;
+  },
+
+  saveProductCategories: (categories: string[]) => {
+    const clean = Array.from(new Set(categories.map(c => c.trim()).filter(Boolean)));
+    localStorage.setItem(storage.getLocalKey('product_categories'), JSON.stringify(clean));
+    const settings = storage.getSettings();
+    const updated = { ...settings, productCategories: clean };
+    storage.saveSettings(updated);
+  },
+
+  saveProductCategory: (categoryName: string) => {
+    const name = categoryName.trim();
+    if (!name) return;
+    const current = storage.getProductCategories();
+    if (!current.some(c => c.toLowerCase() === name.toLowerCase())) {
+      storage.saveProductCategories([...current, name]);
+    }
+  },
+
+  deleteProductCategory: (categoryName: string) => {
+    const current = storage.getProductCategories();
+    const filtered = current.filter(c => c.toLowerCase() !== categoryName.toLowerCase());
+    storage.saveProductCategories(filtered);
+  },
+
+  renameProductCategory: (oldName: string, newName: string) => {
+    const cleanOld = oldName.trim();
+    const cleanNew = newName.trim();
+    if (!cleanOld || !cleanNew || cleanOld.toLowerCase() === cleanNew.toLowerCase()) return;
+    
+    const current = storage.getProductCategories();
+    const updatedCats = current.map(c => (c.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c));
+    storage.saveProductCategories(updatedCats);
+
+    const products = storage.getProducts();
+    let hasProductChanges = false;
+    products.forEach(p => {
+      if (p.category && p.category.toLowerCase() === cleanOld.toLowerCase()) {
+        p.category = cleanNew;
+        hasProductChanges = true;
+      }
+    });
+    if (hasProductChanges) {
+      localStorage.setItem(storage.getLocalKey('products'), JSON.stringify(products));
+      products.forEach(p => {
+        if (p.category === cleanNew) {
+          syncToFirebase('products', p.id, p);
+        }
+      });
+    }
   },
 
   getCustomers: (): Customer[] => {

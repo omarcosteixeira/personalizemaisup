@@ -89,7 +89,10 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
     if (mode === PricingMode.AREA) {
       const hM = unit === 'cm' ? h / 100 : h;
       const wM = unit === 'cm' ? w / 100 : w;
-      return hM * wM * q * price;
+      if (hM <= 0 || wM <= 0 || q <= 0 || price <= 0) return 0;
+      const raw = hM * wM * q * price;
+      // Regra de Tiragem Mínima: quando o valor der menor que 25 reais, o valor sempre será 25 reais
+      return Math.max(25, raw);
     }
     if (mode === PricingMode.MILHEIRO) return (q / 1000) * price;
     return price * q;
@@ -101,8 +104,10 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
   const dimWidthM = dimensionUnit === 'cm' ? width / 100 : width;
   const currentAreaM2PerItem = dimHeightM * dimWidthM;
   const currentAreaM2Total = currentAreaM2PerItem * quantity;
+  const rawCurrentAreaTotal = currentAreaM2Total * currentBasePrice;
+  const isMinimumTiragemApplied = isAreaMode && (dimHeightM > 0 && dimWidthM > 0 && quantity > 0 && currentBasePrice > 0) && rawCurrentAreaTotal < 25;
   const calculatedCurrentItemTotal = isAreaMode 
-    ? (currentAreaM2Total * currentBasePrice)
+    ? (rawCurrentAreaTotal > 0 ? Math.max(25, rawCurrentAreaTotal) : 0)
     : calculateItemPrice(currentBasePrice, isAdHoc ? adHocMode : (selectedProduct?.mode || PricingMode.UNIT), width, height, quantity, dimensionUnit);
 
   const subtotal = items.reduce((acc, item) => acc + item.total, 0);
@@ -452,6 +457,15 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
                     <p className="text-[11px] text-slate-500 font-mono">
                       Fórmula: {dimHeightM.toFixed(2)}m (Alt) × {dimWidthM.toFixed(2)}m (Comp) × {quantity} un × {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentBasePrice)}
                     </p>
+                    {isMinimumTiragemApplied && (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-[10px] font-black uppercase mt-1">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>Tiragem mínima aplicada: R$ 25,00</span>
+                        <span className="line-through text-amber-600/70 font-normal ml-1">
+                          (Cálculo original: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(rawCurrentAreaTotal)})
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="text-right border-t md:border-t-0 md:border-l border-slate-100 pt-2 md:pt-0 md:pl-4">
@@ -459,6 +473,9 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
                     <span className="text-2xl font-black text-indigo-900">
                       {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calculatedCurrentItemTotal)}
                     </span>
+                    {isMinimumTiragemApplied && (
+                      <span className="text-[9px] font-bold text-amber-600 block uppercase">Tiragem Mínima</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -501,6 +518,8 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
                 const hM = unit === 'cm' ? item.height! / 100 : item.height!;
                 const wM = unit === 'cm' ? item.width! / 100 : item.width!;
                 const itemM2 = item.areaM2 || (hM * wM * item.quantity);
+                const rawCalculated = hM * wM * item.quantity * item.unitPrice;
+                const hadMinimumApplied = isItemM2 && rawCalculated < 25 && item.total === 25;
 
                 return (
                   <div key={item.id} className="p-4 flex justify-between items-center group hover:bg-slate-50/80 transition-colors">
@@ -509,6 +528,11 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
                         <p className="text-sm font-black text-slate-800 leading-tight">{item.productName}</p>
                         {isItemM2 && (
                           <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-md">M²</span>
+                        )}
+                        {hadMinimumApplied && (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 text-[9px] font-black uppercase rounded-md">
+                            Tiragem Mínima
+                          </span>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 font-bold mt-1.5">
@@ -525,7 +549,12 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
                       </div>
                     </div>
                     <div className="flex items-center gap-4 ml-4">
-                      <p className="text-sm font-black text-indigo-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.total)}</p>
+                      <div className="text-right">
+                        <p className="text-sm font-black text-indigo-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.total)}</p>
+                        {hadMinimumApplied && (
+                          <span className="text-[9px] font-bold text-amber-600 block">Min. R$ 25</span>
+                        )}
+                      </div>
                       <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>
                     </div>
                   </div>

@@ -48,14 +48,16 @@ const PricingCalculator: React.FC<Props> = ({ products, onProductCreated }) => {
   // Product Labor
   const [productionTimeMinutes, setProductionTimeMinutes] = useState(30);
   
+  const [categories, setCategories] = useState<string[]>(() => storage.getProductCategories());
   const [fixedExpensesPercent, setFixedExpensesPercent] = useState(15);
   const [profitMarginPercent, setProfitMarginPercent] = useState(30);
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('');
+  const [category, setCategory] = useState(() => categories[0] || 'Geral');
   const [selectedStockId, setSelectedStockId] = useState('');
 
   useEffect(() => {
     setStock(storage.getStock());
+    setCategories(storage.getProductCategories());
   }, []);
 
   // Persistir automaticamente os dados financeiros quando alterados (Auto-save)
@@ -409,13 +411,54 @@ const PricingCalculator: React.FC<Props> = ({ products, onProductCreated }) => {
                 className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
                 placeholder="Nome do produto..."
               />
-              <input 
-                type="text" 
-                value={category} 
-                onChange={e => setCategory(e.target.value)}
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Categoria (ex: Camisetas)"
-              />
+              <div className="space-y-1">
+                <div className="flex justify-between items-center px-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Categoria do Produto</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nova = window.prompt('Digite o nome da nova categoria:');
+                      if (nova && nova.trim()) {
+                        const trimmed = nova.trim();
+                        storage.saveProductCategory(trimmed);
+                        const updated = storage.getProductCategories();
+                        setCategories(updated);
+                        setCategory(trimmed);
+                      }
+                    }}
+                    className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800"
+                  >
+                    + Nova
+                  </button>
+                </div>
+                <select 
+                  value={category} 
+                  onChange={e => {
+                    if (e.target.value === '__NEW__') {
+                      const nova = window.prompt('Digite o nome da nova categoria:');
+                      if (nova && nova.trim()) {
+                        const trimmed = nova.trim();
+                        storage.saveProductCategory(trimmed);
+                        const updated = storage.getProductCategories();
+                        setCategories(updated);
+                        setCategory(trimmed);
+                      }
+                    } else {
+                      setCategory(e.target.value);
+                    }
+                  }}
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-700 text-sm"
+                >
+                  <option value="" disabled>Selecione a categoria...</option>
+                  {category && !categories.includes(category) && (
+                    <option value={category}>{category}</option>
+                  )}
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                  <option value="__NEW__" className="text-indigo-600 font-bold">+ Criar nova categoria...</option>
+                </select>
+              </div>
               <button 
                 onClick={handleSaveToCatalog}
                 className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-3"

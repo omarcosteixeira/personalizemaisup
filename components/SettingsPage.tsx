@@ -1,15 +1,27 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { storage } from '../services/storageService';
+import { storage, DEFAULT_PRODUCT_CATEGORIES } from '../services/storageService';
 import { auth } from '../services/firebaseService';
 import { AppSettings, ShippingOption, SidebarBanner, CustomFont } from '../types';
-import { Save, Building, MapPin, Phone, Mail, Instagram, Facebook, Globe, Upload, Image as ImageIcon, X, Truck, Plus, Layout, MessageSquare, Palette, Settings, ShoppingBag, Music, ExternalLink, ToggleLeft, ToggleRight, Type, FileUp, Trash2, Copy, Check, Sparkles, Key, CreditCard } from 'lucide-react';
+import { 
+  Save, Building, MapPin, Phone, Mail, Instagram, Facebook, Globe, Upload, 
+  Image as ImageIcon, X, Truck, Plus, Layout, MessageSquare, Palette, Settings, 
+  ShoppingBag, Music, ExternalLink, ToggleLeft, ToggleRight, Type, FileUp, Trash2, 
+  Copy, Check, Sparkles, Key, CreditCard, Layers, Edit2, RotateCcw, Tag, 
+  FolderPlus, AlertCircle, Package, Search
+} from 'lucide-react';
 
 const SettingsPage: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(storage.getSettings());
   const [customFonts, setCustomFonts] = useState<CustomFont[]>(storage.getCustomFonts());
-  const [activeTab, setActiveTab] = useState<'business' | 'logistics' | 'messages' | 'appearance' | 'fonts' | 'ai' | 'integrations'>('business');
+  const [activeTab, setActiveTab] = useState<'business' | 'categories' | 'logistics' | 'messages' | 'appearance' | 'fonts' | 'ai' | 'integrations'>('business');
   const [copied, setCopied] = useState(false);
+  
+  // Categorias de Produtos
+  const [categories, setCategories] = useState<string[]>(() => storage.getProductCategories());
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [editingCategory, setEditingCategory] = useState<{ oldName: string; newName: string } | null>(null);
+  const [categorySearch, setCategorySearch] = useState('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -141,8 +153,70 @@ const SettingsPage: React.FC = () => {
     setSettings({ ...settings, shippingOptions: settings.shippingOptions.filter(o => o.id !== id) });
   };
 
+  const getProductCountForCategory = (catName: string) => {
+    const products = storage.getProducts();
+    return products.filter(p => p.category?.trim().toLowerCase() === catName.trim().toLowerCase()).length;
+  };
+
+  const handleAddCategory = () => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed) {
+      alert('Digite o nome da categoria.');
+      return;
+    }
+    if (categories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+      alert('Esta categoria já existe!');
+      return;
+    }
+    const updated = [...categories, trimmed];
+    setCategories(updated);
+    storage.saveProductCategories(updated);
+    setNewCategoryInput('');
+  };
+
+  const handleDeleteCategory = (catName: string) => {
+    const count = getProductCountForCategory(catName);
+    let msg = `Deseja realmente remover a categoria "${catName}"?`;
+    if (count > 0) {
+      msg = `Atenção: Existem ${count} produto(s) associados à categoria "${catName}".\n\nA categoria deixará de aparecer na lista padrão de opções suspensas ao cadastrar novos produtos. Deseja continuar?`;
+    }
+    if (!window.confirm(msg)) return;
+
+    const updated = categories.filter(c => c.toLowerCase() !== catName.toLowerCase());
+    setCategories(updated);
+    storage.saveProductCategories(updated);
+  };
+
+  const handleSaveEditCategory = () => {
+    if (!editingCategory) return;
+    const { oldName, newName } = editingCategory;
+    const cleanNew = newName.trim();
+    if (!cleanNew) {
+      alert('O nome da categoria não pode ficar vazio.');
+      return;
+    }
+    if (cleanNew.toLowerCase() !== oldName.toLowerCase() && categories.some(c => c.toLowerCase() === cleanNew.toLowerCase())) {
+      alert('Já existe outra categoria com esse nome.');
+      return;
+    }
+
+    storage.renameProductCategory(oldName, cleanNew);
+    setCategories(storage.getProductCategories());
+    setEditingCategory(null);
+  };
+
+  const handleResetDefaultCategories = () => {
+    if (!window.confirm('Deseja restaurar as categorias padrão recomendadas? As categorias dos seus produtos atuais serão preservadas.')) return;
+    const products = storage.getProducts();
+    const existing = products.map(p => p.category?.trim()).filter(Boolean) as string[];
+    const merged = Array.from(new Set([...DEFAULT_PRODUCT_CATEGORIES, ...existing]));
+    setCategories(merged);
+    storage.saveProductCategories(merged);
+  };
+
   const handleSave = () => {
-    storage.saveSettings(settings);
+    storage.saveProductCategories(categories);
+    storage.saveSettings({ ...settings, productCategories: categories });
     alert('Configurações salvas com sucesso!');
   };
 
@@ -191,6 +265,7 @@ const SettingsPage: React.FC = () => {
       <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar">
         {[
           { id: 'business', label: 'Empresa', icon: Building },
+          { id: 'categories', label: 'Categorias de Produtos', icon: Layers },
           { id: 'logistics', label: 'Banners e Fretes', icon: Truck },
           { id: 'messages', label: 'Mensagens WA', icon: MessageSquare },
           { id: 'appearance', label: 'Aparência', icon: Palette },
@@ -250,6 +325,186 @@ const SettingsPage: React.FC = () => {
                 <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 w-4 h-4" />
                 <input type="text" value={settings.socialLinks.website} onChange={e => setSettings({...settings, socialLinks: {...settings.socialLinks, website: e.target.value}})} className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Site Oficial" />
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'categories' && (
+        <div className="space-y-8 animate-in slide-in-from-top-4 duration-300">
+          {/* Card explicativo e ações rápidas */}
+          <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h4 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-indigo-600" /> Categorias de Produtos
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Gerencie as categorias de produtos da sua gráfica e loja. Ao adicionar ou editar um produto, estas opções aparecerão em uma lista suspensa (dropdown).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetDefaultCategories}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl flex items-center gap-2 transition-all self-start md:self-auto shrink-0"
+                title="Restaura as categorias padrão recomendadas para gráficas e personalização"
+              >
+                <RotateCcw className="w-4 h-4 text-slate-500" /> Restaurar Sugeridas
+              </button>
+            </div>
+
+            {/* Formulário de Adicionar Nova Categoria */}
+            <div className="bg-slate-50 p-4 sm:p-6 rounded-2xl border border-slate-200">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+                Criar Nova Categoria
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <Tag className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={newCategoryInput}
+                    onChange={(e) => setNewCategoryInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCategory();
+                      }
+                    }}
+                    placeholder="Nome da categoria (ex: Brindes de Casamento, Adesivos Vinil, Canecas)..."
+                    className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium text-slate-800"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddCategory}
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all active:scale-95"
+                >
+                  <Plus className="w-4 h-4" /> Adicionar Categoria
+                </button>
+              </div>
+            </div>
+
+            {/* Barra de Busca rápida dentro das categorias */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={categorySearch}
+                  onChange={(e) => setCategorySearch(e.target.value)}
+                  placeholder="Filtrar categorias..."
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
+                />
+              </div>
+              <span className="text-xs font-bold text-slate-400 self-end sm:self-auto">
+                {categories.length} categoria{categories.length === 1 ? '' : 's'} cadastrada{categories.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            {/* Lista de Categorias */}
+            <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white">
+              {categories
+                .filter(cat => cat.toLowerCase().includes(categorySearch.toLowerCase()))
+                .map((cat, index) => {
+                  const productCount = getProductCountForCategory(cat);
+                  const isEditing = editingCategory?.oldName === cat;
+
+                  return (
+                    <div 
+                      key={cat} 
+                      className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                        isEditing ? 'bg-indigo-50/50' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      {isEditing ? (
+                        <div className="flex-1 flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={editingCategory.newName}
+                            onChange={(e) => setEditingCategory({ ...editingCategory, newName: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveEditCategory();
+                              if (e.key === 'Escape') setEditingCategory(null);
+                            }}
+                            autoFocus
+                            className="flex-1 p-2 bg-white border-2 border-indigo-500 rounded-lg text-sm font-bold text-slate-800 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSaveEditCategory}
+                            className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm"
+                            title="Salvar alteração"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingCategory(null)}
+                            className="p-2 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg"
+                            title="Cancelar"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <span className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 font-bold text-xs flex items-center justify-center shrink-0">
+                            {index + 1}
+                          </span>
+                          <div>
+                            <span className="font-bold text-slate-800 text-sm block">
+                              {cat}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {productCount === 0 ? 'Nenhum produto cadastrado' : `${productCount} produto(s) associado(s)`}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {!isEditing && (
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                          <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                            productCount > 0 ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-slate-100 text-slate-400'
+                          }`}>
+                            {productCount} {productCount === 1 ? 'item' : 'itens'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setEditingCategory({ oldName: cat, newName: cat })}
+                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-all"
+                            title="Editar nome da categoria"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(cat)}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                            title="Excluir categoria"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+              {categories.length === 0 && (
+                <div className="p-8 text-center text-slate-400 space-y-3">
+                  <Layers className="w-10 h-10 mx-auto text-slate-300" />
+                  <p className="text-sm font-bold">Nenhuma categoria cadastrada ainda.</p>
+                  <button
+                    type="button"
+                    onClick={handleResetDefaultCategories}
+                    className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl text-xs hover:bg-indigo-700 transition-all inline-flex items-center gap-2"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Carregar Categorias Padrão
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

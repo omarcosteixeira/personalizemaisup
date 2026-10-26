@@ -137,7 +137,9 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
       const hM = modalUnit === 'cm' ? modalHeight / 100 : modalHeight;
       const wM = modalUnit === 'cm' ? modalWidth / 100 : modalWidth;
       const area = hM * wM * modalQty;
-      const totalItem = area * product.price;
+      const rawPrice = area * product.price;
+      // Regra de Tiragem Mínima: quando o valor der menor que 25 reais, o valor sempre será 25 reais
+      const totalItem = Math.max(25, rawPrice);
 
       setCart(prev => [
         ...prev,
@@ -181,7 +183,9 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
           const hM = item.unitDimension === 'cm' ? item.height / 100 : item.height;
           const wM = item.unitDimension === 'cm' ? item.width / 100 : item.width;
           newArea = hM * wM * newQ;
-          newTotal = newArea * item.product.price;
+          const rawPrice = newArea * item.product.price;
+          // Regra de Tiragem Mínima
+          newTotal = Math.max(25, rawPrice);
         }
         return { ...item, quantity: newQ, areaM2: newArea, totalPrice: newTotal };
       }
@@ -750,13 +754,27 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
                     const hM = modalUnit === 'cm' ? modalHeight / 100 : modalHeight;
                     const wM = modalUnit === 'cm' ? modalWidth / 100 : modalWidth;
                     const area = hM * wM * modalQty;
-                    const total = area * selectedProduct.price;
+                    const rawTotal = area * selectedProduct.price;
+                    const hasDimensions = hM > 0 && wM > 0;
+                    const total = hasDimensions ? Math.max(25, rawTotal) : 0;
+                    const isMinimumApplied = hasDimensions && rawTotal < 25;
+
                     return (
-                      <div className="bg-white p-3.5 rounded-2xl flex justify-between items-center text-xs shadow-sm">
-                        <span className="text-slate-500">Área Total: <strong className="text-indigo-600 font-mono">{area.toFixed(2)} m²</strong></span>
-                        <span className="font-black text-indigo-900 text-sm">
-                          Total: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total)}
-                        </span>
+                      <div className="bg-white p-3.5 rounded-2xl space-y-2 text-xs shadow-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500">Área Total: <strong className="text-indigo-600 font-mono">{area.toFixed(2)} m²</strong></span>
+                          <span className="font-black text-indigo-900 text-sm">
+                            Total: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total)}
+                          </span>
+                        </div>
+                        {isMinimumApplied && (
+                          <div className="flex items-center justify-between px-2.5 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-[10px] font-black uppercase">
+                            <span>Tiragem mínima aplicada: R$ 25,00</span>
+                            <span className="line-through text-amber-600/70 font-normal">
+                              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(rawTotal)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -860,9 +878,16 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
                         <div className="flex-1 pr-6">
                           <h4 className="font-bold text-slate-800 text-sm mb-0.5">{item.product.name}</h4>
                           {isM2 ? (
-                            <p className="text-[10px] text-indigo-600 font-mono font-bold mb-1">
-                              📐 {item.height}×{item.width}{unit} ({area.toFixed(2)} m²)
-                            </p>
+                            <div className="space-y-0.5 mb-1">
+                              <p className="text-[10px] text-indigo-600 font-mono font-bold">
+                                📐 {item.height}×{item.width}{unit} ({area.toFixed(2)} m²)
+                              </p>
+                              {(area * item.product.price < 25 && itemDisplayTotal === 25) && (
+                                <span className="inline-block px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded text-[9px] font-black uppercase">
+                                  Tiragem Mínima R$ 25,00
+                                </span>
+                              )}
+                            </div>
                           ) : null}
                           <p className="font-black text-indigo-600 mb-2">
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(itemDisplayTotal)}
