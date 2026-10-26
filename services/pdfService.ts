@@ -63,12 +63,21 @@ export const pdfService = {
       
       const extraStr = extras.length > 0 ? `\n(${extras.join(' | ')})` : '';
 
+      let medidasStr = '-';
+      if (item.width && item.height) {
+        const unit = item.unitDimension || 'm';
+        const hM = unit === 'cm' ? item.height / 100 : item.height;
+        const wM = unit === 'cm' ? item.width / 100 : item.width;
+        const area = item.areaM2 || (hM * wM * item.quantity);
+        medidasStr = `${item.height}x${item.width}${unit}\n(${area.toFixed(2)} m²)`;
+      }
+
       return [
         index + 1,
         productDetails + extraStr,
-        item.width && item.height ? `${item.width.toFixed(0)}x${item.height.toFixed(0)}cm` : '-',
+        medidasStr,
         item.quantity,
-        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.unitPrice),
+        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.unitPrice) + (item.width && item.height ? '/m²' : ''),
         new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.total)
       ];
     });

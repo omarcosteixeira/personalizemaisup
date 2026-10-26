@@ -275,7 +275,7 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cobrança</label>
               <select value={mode} onChange={(e) => setMode(e.target.value as PricingMode)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl">
                 <option value={PricingMode.UNIT}>Unidade</option>
-                <option value={PricingMode.AREA}>M² (em cm)</option>
+                <option value={PricingMode.AREA}>M² (Metro Quadrado)</option>
                 <option value={PricingMode.MILHEIRO}>Milheiro</option>
               </select>
             </div>

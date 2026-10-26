@@ -14,9 +14,10 @@ import {
   User,
   Package,
   X,
-  Tag
+  Tag,
+  Calculator
 } from 'lucide-react';
-import { Product, Quotation, QuotationItem, Customer } from '../types';
+import { Product, PricingMode, Quotation, QuotationItem, Customer } from '../types';
 import { storage } from '../services/storageService';
 import { pdfService } from '../services/pdfService';
 
@@ -33,13 +34,29 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [lastSaleId, setLastSaleId] = useState('');
 
+  // Modal para produto cobrado por M²
+  const [m2ModalProduct, setM2ModalProduct] = useState<Product | null>(null);
+  const [m2Height, setM2Height] = useState<number>(0);
+  const [m2Width, setM2Width] = useState<number>(0);
+  const [m2Unit, setM2Unit] = useState<'m' | 'cm'>('m');
+  const [m2Quantity, setM2Quantity] = useState<number>(1);
+
   const filteredProducts = products.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const addToCart = (product: Product) => {
-    const existing = cart.find(item => item.productId === product.id && !item.isAdHoc);
+    if (product.mode === PricingMode.AREA) {
+      setM2ModalProduct(product);
+      setM2Height(0);
+      setM2Width(0);
+      setM2Unit('m');
+      setM2Quantity(1);
+      return;
+    }
+
+    const existing = cart.find(item => item.productId === product.id && !item.isAdHoc && !item.height);
     if (existing) {
       updateQuantity(existing.id, existing.quantity + 1);
     } else {
@@ -55,12 +72,58 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
     }
   };
 
+  const confirmAddM2Product = () => {
+    if (!m2ModalProduct) return;
+    if (m2Height <= 0 || m2Width <= 0) {
+      alert('Por favor, informe a Altura e o Comprimento do produto M².');
+      return;
+    }
+    if (m2Quantity <= 0) {
+      alert('A quantidade deve ser de no mínimo 1.');
+      return;
+    }
+
+    const hM = m2Unit === 'cm' ? m2Height / 100 : m2Height;
+    const wM = m2Unit === 'cm' ? m2Width / 100 : m2Width;
+    const areaTotal = hM * wM * m2Quantity;
+    const totalPrice = areaTotal * m2ModalProduct.price;
+
+    const newItem: QuotationItem = {
+      id: Math.random().toString(36).substr(2, 9),
+      productId: m2ModalProduct.id,
+      productName: m2ModalProduct.name,
+      height: m2Height,
+      width: m2Width,
+      unitDimension: m2Unit,
+      areaM2: areaTotal,
+      quantity: m2Quantity,
+      unitPrice: m2ModalProduct.price,
+      total: totalPrice
+    };
+
+    setCart([...cart, newItem]);
+    setM2ModalProduct(null);
+  };
+
   const updateQuantity = (id: string, qty: number) => {
     if (qty < 1) {
       setCart(cart.filter(item => item.id !== id));
       return;
     }
-    setCart(cart.map(item => item.id === id ? { ...item, quantity: qty, total: qty * item.unitPrice } : item));
+    setCart(cart.map(item => {
+      if (item.id === id) {
+        let newTotal = qty * item.unitPrice;
+        let newAreaM2 = item.areaM2;
+        if (item.height && item.width) {
+          const hM = item.unitDimension === 'cm' ? item.height / 100 : item.height;
+          const wM = item.unitDimension === 'cm' ? item.width / 100 : item.width;
+          newAreaM2 = hM * wM * qty;
+          newTotal = newAreaM2 * item.unitPrice;
+        }
+        return { ...item, quantity: qty, areaM2: newAreaM2, total: newTotal };
+      }
+      return item;
+    }));
   };
 
   const subtotal = cart.reduce((acc, item) => acc + item.total, 0);
@@ -144,8 +207,18 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
                 )}
               </div>
               <h4 className="text-xs font-bold text-slate-700 line-clamp-2 mb-1">{p.name}</h4>
-              <p className="text-sm font-black text-indigo-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.price)}</p>
-              <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">{p.category}</div>
+              <p className="text-sm font-black text-indigo-600">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.price)}
+                {p.mode === PricingMode.AREA ? <span className="text-[10px] text-slate-400 font-bold">/m²</span> : null}
+              </p>
+              <div className="mt-2 flex flex-col items-center gap-1">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{p.category}</span>
+                {p.mode === PricingMode.AREA && (
+                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[9px] font-black uppercase rounded-full">
+                    Cobrança M²
+                  </span>
+                )}
+              </div>
             </button>
           ))}
         </div>
@@ -160,22 +233,36 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            {cart.map(item => (
-              <div key={item.id} className="flex justify-between items-start group">
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800 leading-tight">{item.productName}</p>
-                  <p className="text-xs text-slate-400">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.unitPrice)}/un</p>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-lg">
-                    <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="p-1 hover:text-indigo-600"><Minus className="w-3 h-3"/></button>
-                    <span className="text-xs font-bold w-6 text-center">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="p-1 hover:text-indigo-600"><Plus className="w-3 h-3"/></button>
+            {cart.map(item => {
+              const isItemM2 = !!(item.width && item.height);
+              const unit = item.unitDimension || 'm';
+              const hM = unit === 'cm' ? item.height! / 100 : item.height!;
+              const wM = unit === 'cm' ? item.width! / 100 : item.width!;
+              const itemM2 = item.areaM2 || (hM * wM * item.quantity);
+
+              return (
+                <div key={item.id} className="flex justify-between items-start group">
+                  <div className="flex-1 pr-2">
+                    <p className="text-sm font-bold text-slate-800 leading-tight">{item.productName}</p>
+                    {isItemM2 ? (
+                      <p className="text-[10px] text-indigo-600 font-mono font-bold mt-1">
+                        📐 {item.height}×{item.width}{unit} ({itemM2.toFixed(2)} m²) • {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.unitPrice)}/m²
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-400">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.unitPrice)}/un</p>
+                    )}
                   </div>
-                  <p className="text-sm font-black text-slate-700">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.total)}</p>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-lg">
+                      <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="p-1 hover:text-indigo-600"><Minus className="w-3 h-3"/></button>
+                      <span className="text-xs font-bold w-6 text-center">{item.quantity}</span>
+                      <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="p-1 hover:text-indigo-600"><Plus className="w-3 h-3"/></button>
+                    </div>
+                    <p className="text-sm font-black text-slate-700">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.total)}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {cart.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-30">
@@ -250,6 +337,147 @@ const PDV: React.FC<Props> = ({ products, onSaleComplete }) => {
                 className="w-full py-4 bg-slate-100 text-slate-600 font-black rounded-2xl hover:bg-slate-200 transition-all"
               >
                 Nova Venda
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Produto M² (Altura, Comprimento e Quantidade) */}
+      {m2ModalProduct && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white p-6 sm:p-8 rounded-[36px] shadow-2xl max-w-md w-full space-y-6 animate-in zoom-in duration-200">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                  <Calculator className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-full">
+                    Cobrança por M²
+                  </span>
+                  <h3 className="text-lg font-black text-slate-800 leading-tight mt-1">{m2ModalProduct.name}</h3>
+                  <p className="text-xs text-slate-400">
+                    Preço: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(m2ModalProduct.price)} / m²
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setM2ModalProduct(null)} className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Unidade */}
+              <div className="flex items-center justify-between bg-slate-50 p-2 rounded-2xl border border-slate-200">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 pl-2">Unidade das Medidas:</span>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setM2Unit('m')}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
+                      m2Unit === 'm' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'
+                    }`}
+                  >
+                    Metros (m)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setM2Unit('cm')}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
+                      m2Unit === 'cm' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'
+                    }`}
+                  >
+                    Centímetros (cm)
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                    Altura ({m2Unit})
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={m2Height || ''}
+                    onChange={e => setM2Height(parseFloat(e.target.value) || 0)}
+                    placeholder={`0.00 ${m2Unit}`}
+                    className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                    Comprimento ({m2Unit})
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={m2Width || ''}
+                    onChange={e => setM2Width(parseFloat(e.target.value) || 0)}
+                    placeholder={`0.00 ${m2Unit}`}
+                    className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  Quantidade de Peças
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={m2Quantity}
+                  onChange={e => setM2Quantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Resumo do Cálculo em tempo real */}
+              {(() => {
+                const hM = m2Unit === 'cm' ? m2Height / 100 : m2Height;
+                const wM = m2Unit === 'cm' ? m2Width / 100 : m2Width;
+                const areaPerPiece = hM * wM;
+                const areaTotal = areaPerPiece * m2Quantity;
+                const totalVal = areaTotal * m2ModalProduct.price;
+
+                return (
+                  <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-100 space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-500 font-medium">Área Total ({m2Quantity} {m2Quantity > 1 ? 'peças' : 'peça'}):</span>
+                      <span className="font-black text-indigo-700">{areaTotal.toFixed(2)} m²</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      Cálculo: {hM.toFixed(2)}m (Alt) × {wM.toFixed(2)}m (Comp) × {m2Quantity} un × {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(m2ModalProduct.price)}
+                    </div>
+                    <div className="pt-2 border-t border-indigo-100 flex justify-between items-end">
+                      <span className="text-[10px] font-black text-indigo-900 uppercase">Valor Total:</span>
+                      <span className="text-2xl font-black text-indigo-900">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalVal)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setM2ModalProduct(null)}
+                className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmAddM2Product}
+                className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 text-sm"
+              >
+                Adicionar ao Pedido
               </button>
             </div>
           </div>

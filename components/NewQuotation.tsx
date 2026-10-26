@@ -69,6 +69,7 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
 
   const [width, setWidth] = useState<number>(0);
   const [height, setHeight] = useState<number>(0);
+  const [dimensionUnit, setDimensionUnit] = useState<'m' | 'cm'>('m');
   const [quantity, setQuantity] = useState<number>(1);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedTheme, setSelectedTheme] = useState('');
@@ -84,11 +85,25 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
     CREDIT: { 1: 0.0498, 2: 0.0650, 3: 0.0790, 4: 0.0920, 5: 0.1050, 6: 0.1180 }
   };
 
-  const calculateItemPrice = (price: number, mode: PricingMode, w: number, h: number, q: number) => {
-    if (mode === PricingMode.AREA) return ((w * h) / 10000) * price * q;
+  const calculateItemPrice = (price: number, mode: PricingMode, w: number, h: number, q: number, unit: 'm' | 'cm' = 'm') => {
+    if (mode === PricingMode.AREA) {
+      const hM = unit === 'cm' ? h / 100 : h;
+      const wM = unit === 'cm' ? w / 100 : w;
+      return hM * wM * q * price;
+    }
     if (mode === PricingMode.MILHEIRO) return (q / 1000) * price;
     return price * q;
   };
+
+  const isAreaMode = isAdHoc ? (adHocMode === PricingMode.AREA) : (selectedProduct?.mode === PricingMode.AREA);
+  const currentBasePrice = isAdHoc ? adHocPrice : (selectedProduct?.price || 0);
+  const dimHeightM = dimensionUnit === 'cm' ? height / 100 : height;
+  const dimWidthM = dimensionUnit === 'cm' ? width / 100 : width;
+  const currentAreaM2PerItem = dimHeightM * dimWidthM;
+  const currentAreaM2Total = currentAreaM2PerItem * quantity;
+  const calculatedCurrentItemTotal = isAreaMode 
+    ? (currentAreaM2Total * currentBasePrice)
+    : calculateItemPrice(currentBasePrice, isAdHoc ? adHocMode : (selectedProduct?.mode || PricingMode.UNIT), width, height, quantity, dimensionUnit);
 
   const subtotal = items.reduce((acc, item) => acc + item.total, 0);
 
@@ -117,31 +132,76 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
 
   const addItem = () => {
     if (isAdHoc) {
-      if (!adHocName || adHocPrice <= 0) return;
-      const price = calculateItemPrice(adHocPrice, adHocMode, width, height, quantity);
+      if (!adHocName || adHocPrice <= 0) {
+        alert('Informe o nome e o preço base do produto avulso.');
+        return;
+      }
+      if (adHocMode === PricingMode.AREA && (width <= 0 || height <= 0)) {
+        alert('Informe a Altura e o Comprimento para o cálculo do M².');
+        return;
+      }
+      if (quantity <= 0) {
+        alert('A quantidade deve ser de no mínimo 1.');
+        return;
+      }
+
+      const price = calculateItemPrice(adHocPrice, adHocMode, width, height, quantity, dimensionUnit);
+      const areaTotal = adHocMode === PricingMode.AREA ? currentAreaM2Total : undefined;
+
       setItems([...items, {
         id: Math.random().toString(36).substr(2, 9),
         productId: 'ad-hoc',
         productName: adHocName,
         width: adHocMode === PricingMode.AREA ? width : undefined,
         height: adHocMode === PricingMode.AREA ? height : undefined,
-        quantity, unitPrice: adHocPrice, total: price, isAdHoc: true,
-        selectedSize, selectedTheme
+        unitDimension: adHocMode === PricingMode.AREA ? dimensionUnit : undefined,
+        areaM2: areaTotal,
+        quantity,
+        unitPrice: adHocPrice,
+        total: price,
+        isAdHoc: true,
+        selectedSize,
+        selectedTheme
       }]);
     } else {
-      if (!selectedProduct) return;
-      const price = calculateItemPrice(selectedProduct.price, selectedProduct.mode, width, height, quantity);
+      if (!selectedProduct) {
+        alert('Selecione um produto.');
+        return;
+      }
+      if (selectedProduct.mode === PricingMode.AREA && (width <= 0 || height <= 0)) {
+        alert('Informe a Altura e o Comprimento para o cálculo do M².');
+        return;
+      }
+      if (quantity <= 0) {
+        alert('A quantidade deve ser de no mínimo 1.');
+        return;
+      }
+
+      const price = calculateItemPrice(selectedProduct.price, selectedProduct.mode, width, height, quantity, dimensionUnit);
+      const areaTotal = selectedProduct.mode === PricingMode.AREA ? currentAreaM2Total : undefined;
+
       setItems([...items, {
         id: Math.random().toString(36).substr(2, 9),
         productId: selectedProduct.id,
         productName: selectedProduct.name,
         width: selectedProduct.mode === PricingMode.AREA ? width : undefined,
         height: selectedProduct.mode === PricingMode.AREA ? height : undefined,
-        quantity, unitPrice: selectedProduct.price, total: price,
-        selectedSize, selectedTheme, productionTime: selectedProduct.productionTime
+        unitDimension: selectedProduct.mode === PricingMode.AREA ? dimensionUnit : undefined,
+        areaM2: areaTotal,
+        quantity,
+        unitPrice: selectedProduct.price,
+        total: price,
+        selectedSize,
+        selectedTheme,
+        productionTime: selectedProduct.productionTime
       }]);
     }
-    setSelectedProduct(null); setWidth(0); setHeight(0); setQuantity(1); setSelectedSize(''); setSelectedTheme('');
+    setSelectedProduct(null);
+    setWidth(0);
+    setHeight(0);
+    setQuantity(1);
+    setSelectedSize('');
+    setSelectedTheme('');
   };
 
   const applyCoupon = () => {
@@ -248,24 +308,161 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
             <div className="md:col-span-2 space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Produto</label>
               {isAdHoc ? (
-                <input type="text" value={adHocName} onChange={e => setAdHocName(e.target.value)} placeholder="Ex: Panfleto Especial" className="w-full p-4 bg-orange-50 border border-orange-100 rounded-2xl text-sm" />
+                <div className="space-y-2">
+                  <input type="text" value={adHocName} onChange={e => setAdHocName(e.target.value)} placeholder="Ex: Banner Lona 440g" className="w-full p-4 bg-orange-50 border border-orange-100 rounded-2xl text-sm" />
+                  <div className="flex gap-1.5">
+                    <button type="button" onClick={() => setAdHocMode(PricingMode.UNIT)} className={`px-3 py-1 rounded-xl text-[10px] font-bold ${adHocMode === PricingMode.UNIT ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>Unidade</button>
+                    <button type="button" onClick={() => setAdHocMode(PricingMode.AREA)} className={`px-3 py-1 rounded-xl text-[10px] font-bold ${adHocMode === PricingMode.AREA ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>M² (Metro²)</button>
+                    <button type="button" onClick={() => setAdHocMode(PricingMode.MILHEIRO)} className={`px-3 py-1 rounded-xl text-[10px] font-bold ${adHocMode === PricingMode.MILHEIRO ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>Milheiro</button>
+                  </div>
+                </div>
               ) : (
                 <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm appearance-none" onChange={e => setSelectedProduct(products.find(p => p.id === e.target.value) || null)}>
                   <option value="">Selecione um produto...</option>
-                  {products.map(p => <option key={p.id} value={p.id}>{p.name} - R$ {p.price}</option>)}
+                  {products.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} - R$ {p.price} {p.mode === PricingMode.AREA ? '(Cobrança M²)' : ''}
+                    </option>
+                  ))}
                 </select>
               )}
             </div>
+
             <div className="grid grid-cols-2 gap-3 md:col-span-2">
                <div className="space-y-1">
-                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Preço Base</label>
-                 <input type="number" value={isAdHoc ? adHocPrice : selectedProduct?.price || 0} onChange={e => isAdHoc && setAdHocPrice(parseFloat(e.target.value))} disabled={!isAdHoc} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm" />
+                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                   {isAreaMode ? 'Preço por M²' : 'Preço Base'}
+                 </label>
+                 <input type="number" step="any" value={isAdHoc ? adHocPrice : selectedProduct?.price || 0} onChange={e => isAdHoc && setAdHocPrice(parseFloat(e.target.value))} disabled={!isAdHoc} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold" />
                </div>
-               <div className="space-y-1">
-                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantidade</label>
-                 <input type="number" value={quantity} onChange={e => setQuantity(parseInt(e.target.value))} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm" />
-               </div>
+               {!isAreaMode && (
+                 <div className="space-y-1">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantidade</label>
+                   <input type="number" min="1" value={quantity} onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm" />
+                 </div>
+               )}
             </div>
+
+            {/* PAINEL ESPECIAL DE COBRANÇA POR M² */}
+            {isAreaMode && (
+              <div className="md:col-span-4 bg-gradient-to-br from-indigo-50/90 to-blue-50/50 border-2 border-indigo-200 rounded-3xl p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-md shadow-indigo-200">
+                      <Calculator className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h5 className="text-xs font-black text-indigo-950 uppercase tracking-wider flex items-center gap-2">
+                        Medidas do Produto M²
+                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-full uppercase">Área</span>
+                      </h5>
+                      <p className="text-[11px] text-indigo-600/80 font-medium">
+                        Cálculo automático: Altura × Comprimento × Quantidade × Preço Venda
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 bg-white p-1 rounded-2xl border border-indigo-200 self-start sm:self-auto shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setDimensionUnit('m')}
+                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
+                        dimensionUnit === 'm'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-500 hover:text-indigo-600'
+                      }`}
+                    >
+                      Metros (m)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDimensionUnit('cm')}
+                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
+                        dimensionUnit === 'cm'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-500 hover:text-indigo-600'
+                      }`}
+                    >
+                      Centímetros (cm)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-indigo-900 uppercase tracking-widest flex items-center justify-between">
+                      <span>Altura ({dimensionUnit})</span>
+                      <span className="text-indigo-400 font-medium">Ex: {dimensionUnit === 'm' ? '1.50' : '150'}</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={height || ''}
+                      onChange={e => setHeight(parseFloat(e.target.value) || 0)}
+                      placeholder={`0.00 ${dimensionUnit}`}
+                      className="w-full p-4 bg-white border border-indigo-200 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-indigo-900 uppercase tracking-widest flex items-center justify-between">
+                      <span>Comprimento ({dimensionUnit})</span>
+                      <span className="text-indigo-400 font-medium">Ex: {dimensionUnit === 'm' ? '2.00' : '200'}</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={width || ''}
+                      onChange={e => setWidth(parseFloat(e.target.value) || 0)}
+                      placeholder={`0.00 ${dimensionUnit}`}
+                      className="w-full p-4 bg-white border border-indigo-200 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">
+                      Quantidade de Peças
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={quantity}
+                      onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full p-4 bg-white border border-indigo-200 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Box de cálculo em tempo real */}
+                <div className="bg-white p-4 rounded-2xl border border-indigo-100 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Área Unitária:</span>
+                      <span className="text-xs font-bold text-slate-700 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-100">
+                        {currentAreaM2PerItem.toFixed(2)} m² / peça
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Área Total:</span>
+                      <span className="text-xs font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">
+                        {currentAreaM2Total.toFixed(2)} m² ({quantity} {quantity > 1 ? 'peças' : 'peça'})
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-mono">
+                      Fórmula: {dimHeightM.toFixed(2)}m (Alt) × {dimWidthM.toFixed(2)}m (Comp) × {quantity} un × {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentBasePrice)}
+                    </p>
+                  </div>
+
+                  <div className="text-right border-t md:border-t-0 md:border-l border-slate-100 pt-2 md:pt-0 md:pl-4">
+                    <span className="text-[9px] font-black uppercase text-indigo-500 block tracking-wider">Valor do Item</span>
+                    <span className="text-2xl font-black text-indigo-900">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calculatedCurrentItemTotal)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {selectedProduct && selectedProduct.hasSize && (
               <div className="md:col-span-4 grid grid-cols-2 gap-3">
@@ -291,20 +488,49 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
 
         {items.length > 0 && (
           <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="p-4 bg-slate-50/50 border-b border-slate-100"><p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Itens no Pedido ({items.length})</p></div>
+            <div className="p-4 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Itens no Pedido ({items.length})</p>
+              <p className="text-[10px] font-bold text-slate-500">
+                Subtotal: <span className="font-black text-indigo-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(subtotal)}</span>
+              </p>
+            </div>
             <div className="divide-y divide-slate-100">
-              {items.map(item => (
-                <div key={item.id} className="p-4 flex justify-between items-center group">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-black text-slate-800 leading-tight">{item.productName}</p>
-                    <p className="text-[10px] text-slate-400 font-bold mt-0.5">Qtd: {item.quantity} | {item.selectedSize ? `Tam: ${item.selectedSize}` : ''} {item.selectedTheme ? `| Tema: ${item.selectedTheme}` : ''}</p>
+              {items.map(item => {
+                const isItemM2 = !!(item.width && item.height);
+                const unit = item.unitDimension || 'm';
+                const hM = unit === 'cm' ? item.height! / 100 : item.height!;
+                const wM = unit === 'cm' ? item.width! / 100 : item.width!;
+                const itemM2 = item.areaM2 || (hM * wM * item.quantity);
+
+                return (
+                  <div key={item.id} className="p-4 flex justify-between items-center group hover:bg-slate-50/80 transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-black text-slate-800 leading-tight">{item.productName}</p>
+                        {isItemM2 && (
+                          <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-md">M²</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 font-bold mt-1.5">
+                        {isItemM2 && (
+                          <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-md font-mono">
+                            📐 {item.height}×{item.width}{unit} ({itemM2.toFixed(2)} m²)
+                          </span>
+                        )}
+                        <span className="bg-slate-100 px-2 py-0.5 rounded-md text-slate-700">Qtd: {item.quantity}</span>
+                        <span className="text-slate-300">•</span>
+                        <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.unitPrice)}{isItemM2 ? '/m²' : '/un'}</span>
+                        {item.selectedSize ? <span className="bg-slate-100 px-2 py-0.5 rounded-md">Tam: {item.selectedSize}</span> : null}
+                        {item.selectedTheme ? <span className="bg-slate-100 px-2 py-0.5 rounded-md">Tema: {item.selectedTheme}</span> : null}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 ml-4">
+                      <p className="text-sm font-black text-indigo-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.total)}</p>
+                      <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 ml-4">
-                    <p className="text-sm font-black text-indigo-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.total)}</p>
-                    <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

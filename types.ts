@@ -49,8 +49,10 @@ export interface QuotationItem {
   id: string;
   productId: string;
   productName: string;
-  width?: number; // cm
-  height?: number; // cm
+  width?: number; // comprimento / largura
+  height?: number; // altura
+  unitDimension?: 'm' | 'cm';
+  areaM2?: number;
   quantity: number;
   unitPrice: number;
   total: number;

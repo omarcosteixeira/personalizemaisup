@@ -30,8 +30,14 @@ import {
 } from 'lucide-react';
 
 interface CartItem {
+  id: string;
   product: Product;
   quantity: number;
+  width?: number;
+  height?: number;
+  unitDimension?: 'm' | 'cm';
+  areaM2?: number;
+  totalPrice?: number;
 }
 
 interface Props {
@@ -45,6 +51,12 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [currentBanner, setCurrentBanner] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  // Estados de Medidas M² para Produto Selecionado
+  const [modalHeight, setModalHeight] = useState<number>(0);
+  const [modalWidth, setModalWidth] = useState<number>(0);
+  const [modalUnit, setModalUnit] = useState<'m' | 'cm'>('m');
+  const [modalQty, setModalQty] = useState<number>(1);
 
   const [showPromoModal, setShowPromoModal] = useState(false);
   const [promoName, setPromoName] = useState('');
@@ -76,6 +88,14 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
 
   const localSettings = storage.getSettings();
   const settings = propSettings || localSettings;
+
+  const openProductModal = (p: Product) => {
+    setSelectedProduct(p);
+    setModalHeight(0);
+    setModalWidth(0);
+    setModalUnit('m');
+    setModalQty(1);
+  };
 
   // Filter out hidden products first
   const visibleProducts = products.filter(p => !p.hiddenInStore);
@@ -109,32 +129,71 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
   };
 
   const addToCart = (product: Product) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.product.id === product.id);
-      if (existing) {
-        return prev.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+    if (product.mode === PricingMode.AREA) {
+      if (modalHeight <= 0 || modalWidth <= 0) {
+        alert('Por favor, informe a Altura e o Comprimento do produto.');
+        return;
       }
-      return [...prev, { product, quantity: 1 }];
+      const hM = modalUnit === 'cm' ? modalHeight / 100 : modalHeight;
+      const wM = modalUnit === 'cm' ? modalWidth / 100 : modalWidth;
+      const area = hM * wM * modalQty;
+      const totalItem = area * product.price;
+
+      setCart(prev => [
+        ...prev,
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          product,
+          quantity: modalQty,
+          height: modalHeight,
+          width: modalWidth,
+          unitDimension: modalUnit,
+          areaM2: area,
+          totalPrice: totalItem
+        }
+      ]);
+      setSelectedProduct(null);
+      setShowCart(true);
+      return;
+    }
+
+    setCart(prev => {
+      const existing = prev.find(item => item.product.id === product.id && !item.height);
+      if (existing) {
+        return prev.map(item => (item.product.id === product.id && !item.height) 
+          ? { ...item, quantity: item.quantity + 1, totalPrice: (item.quantity + 1) * item.product.price } 
+          : item
+        );
+      }
+      return [...prev, { id: Math.random().toString(36).substr(2, 9), product, quantity: 1, totalPrice: product.price }];
     });
     setSelectedProduct(null);
     setShowCart(true);
   };
 
-  const updateQuantity = (productId: string, delta: number) => {
+  const updateQuantity = (cartItemId: string, delta: number) => {
     setCart(prev => prev.map(item => {
-      if (item.product.id === productId) {
+      if (item.id === cartItemId || item.product.id === cartItemId) {
         const newQ = Math.max(1, item.quantity + delta);
-        return { ...item, quantity: newQ };
+        let newTotal = newQ * item.product.price;
+        let newArea = item.areaM2;
+        if (item.height && item.width) {
+          const hM = item.unitDimension === 'cm' ? item.height / 100 : item.height;
+          const wM = item.unitDimension === 'cm' ? item.width / 100 : item.width;
+          newArea = hM * wM * newQ;
+          newTotal = newArea * item.product.price;
+        }
+        return { ...item, quantity: newQ, areaM2: newArea, totalPrice: newTotal };
       }
       return item;
     }));
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart(prev => prev.filter(item => item.product.id !== productId));
+  const removeFromCart = (cartItemId: string) => {
+    setCart(prev => prev.filter(item => item.id !== cartItemId && item.product.id !== cartItemId));
   };
 
-  const cartTotal = cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
+  const cartTotal = cart.reduce((acc, item) => acc + (item.totalPrice !== undefined ? item.totalPrice : (item.product.price * item.quantity)), 0);
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,10 +205,16 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
       customerName: checkoutData.name,
       customerContact: checkoutData.phone,
       items: cart.map(c => ({
-        product: c.product,
+        id: c.id,
+        productId: c.product.id,
+        productName: c.product.name,
+        width: c.width,
+        height: c.height,
+        unitDimension: c.unitDimension,
+        areaM2: c.areaM2,
         quantity: c.quantity,
         unitPrice: c.product.price,
-        totalPrice: c.product.price * c.quantity
+        total: c.totalPrice !== undefined ? c.totalPrice : (c.product.price * c.quantity)
       })),
       subtotal: cartTotal,
       discountValue: 0,
@@ -378,7 +443,7 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
               
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                 {highlightedProducts.map(p => (
-                  <div key={p.id} onClick={() => setSelectedProduct(p)} className={`group bg-white p-5 ${cardRadius} shadow-sm border border-slate-100 hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 cursor-pointer flex flex-col`}>
+                  <div key={p.id} onClick={() => openProductModal(p)} className={`group bg-white p-5 ${cardRadius} shadow-sm border border-slate-100 hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 cursor-pointer flex flex-col`}>
                     <div className={`aspect-square ${imgRadius} overflow-hidden mb-6 bg-slate-50 relative shrink-0`}>
                       {p.imageUrl ? (
                         <img src={p.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={p.name} />
@@ -411,7 +476,7 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
 
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
               {filtered.map(p => (
-                <div key={p.id} onClick={() => setSelectedProduct(p)} className={`bg-white ${cardRadius} overflow-hidden border border-slate-100 hover:shadow-2xl group flex flex-col p-2 transition-all cursor-pointer`}>
+                <div key={p.id} onClick={() => openProductModal(p)} className={`bg-white ${cardRadius} overflow-hidden border border-slate-100 hover:shadow-2xl group flex flex-col p-2 transition-all cursor-pointer`}>
                   <div className={`aspect-[4/3] overflow-hidden ${imgRadius} relative bg-slate-50 shrink-0`}>
                     {p.imageUrl ? (
                       <img src={p.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={p.name} />
@@ -615,6 +680,89 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
                 )}
               </div>
 
+              {/* M² Configuration Section for Storefront */}
+              {selectedProduct.mode === PricingMode.AREA && (
+                <div className="mb-6 p-5 bg-indigo-50/70 rounded-3xl border border-indigo-100 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-black uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
+                      <span className="p-1.5 bg-indigo-600 text-white rounded-lg"><Layers className="w-3.5 h-3.5"/></span> Medidas do Produto
+                    </h5>
+                    <div className="flex gap-1 bg-white p-1 rounded-xl border border-indigo-200">
+                      <button
+                        type="button"
+                        onClick={() => setModalUnit('m')}
+                        className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${
+                          modalUnit === 'm' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'
+                        }`}
+                      >
+                        Metros (m)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setModalUnit('cm')}
+                        className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${
+                          modalUnit === 'cm' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'
+                        }`}
+                      >
+                        Centímetros (cm)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="text-[9px] font-black text-indigo-900 uppercase">Altura ({modalUnit})</label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={modalHeight || ''}
+                        onChange={e => setModalHeight(parseFloat(e.target.value) || 0)}
+                        placeholder={`0.00 ${modalUnit}`}
+                        className="w-full p-3 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-indigo-900 uppercase">Comprimento ({modalUnit})</label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={modalWidth || ''}
+                        onChange={e => setModalWidth(parseFloat(e.target.value) || 0)}
+                        placeholder={`0.00 ${modalUnit}`}
+                        className="w-full p-3 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-indigo-900 uppercase">Quantidade</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={modalQty}
+                        onChange={e => setModalQty(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full p-3 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const hM = modalUnit === 'cm' ? modalHeight / 100 : modalHeight;
+                    const wM = modalUnit === 'cm' ? modalWidth / 100 : modalWidth;
+                    const area = hM * wM * modalQty;
+                    const total = area * selectedProduct.price;
+                    return (
+                      <div className="bg-white p-3.5 rounded-2xl flex justify-between items-center text-xs shadow-sm">
+                        <span className="text-slate-500">Área Total: <strong className="text-indigo-600 font-mono">{area.toFixed(2)} m²</strong></span>
+                        <span className="font-black text-indigo-900 text-sm">
+                          Total: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total)}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
               {/* Modal Actions */}
               <div className="sticky bottom-0 bg-white pt-6 border-t border-slate-100 mt-auto flex flex-col sm:flex-row gap-4">
                 <button 
@@ -694,25 +842,42 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
                      <p className="font-bold">Seu carrinho está vazio</p>
                   </div>
                 ) : (
-                  cart.map(item => (
-                    <div key={item.product.id} className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 relative">
-                       {item.product.imageUrl ? (
-                         <img src={item.product.imageUrl} className="w-16 h-16 object-cover rounded-xl" />
-                       ) : (
-                         <div className="w-16 h-16 bg-slate-200 rounded-xl flex items-center justify-center text-slate-400"><Tag className="w-6 h-6"/></div>
-                       )}
-                       <div className="flex-1">
-                          <h4 className="font-bold text-slate-800 text-sm mb-1">{item.product.name}</h4>
-                          <p className="font-black text-indigo-600 mb-2">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.product.price)}</p>
+                  cart.map(item => {
+                    const isM2 = !!(item.width && item.height);
+                    const unit = item.unitDimension || 'm';
+                    const hM = unit === 'cm' ? item.height! / 100 : item.height!;
+                    const wM = unit === 'cm' ? item.width! / 100 : item.width!;
+                    const area = item.areaM2 || (hM * wM * item.quantity);
+                    const itemDisplayTotal = item.totalPrice !== undefined ? item.totalPrice : (item.product.price * item.quantity);
+
+                    return (
+                      <div key={item.id || item.product.id} className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 relative">
+                        {item.product.imageUrl ? (
+                          <img src={item.product.imageUrl} className="w-16 h-16 object-cover rounded-xl" />
+                        ) : (
+                          <div className="w-16 h-16 bg-slate-200 rounded-xl flex items-center justify-center text-slate-400"><Tag className="w-6 h-6"/></div>
+                        )}
+                        <div className="flex-1 pr-6">
+                          <h4 className="font-bold text-slate-800 text-sm mb-0.5">{item.product.name}</h4>
+                          {isM2 ? (
+                            <p className="text-[10px] text-indigo-600 font-mono font-bold mb-1">
+                              📐 {item.height}×{item.width}{unit} ({area.toFixed(2)} m²)
+                            </p>
+                          ) : null}
+                          <p className="font-black text-indigo-600 mb-2">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(itemDisplayTotal)}
+                            {isM2 && <span className="text-[10px] text-slate-400 font-normal ml-1">({new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.product.price)}/m²)</span>}
+                          </p>
                           <div className="flex items-center gap-2">
-                             <button onClick={() => updateQuantity(item.product.id, -1)} className="p-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100"><Minus className="w-4 h-4" /></button>
-                             <span className="font-bold text-sm w-4 text-center">{item.quantity}</span>
-                             <button onClick={() => updateQuantity(item.product.id, 1)} className="p-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100"><Plus className="w-4 h-4" /></button>
+                            <button onClick={() => updateQuantity(item.id || item.product.id, -1)} className="p-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100"><Minus className="w-4 h-4" /></button>
+                            <span className="font-bold text-sm w-4 text-center">{item.quantity}</span>
+                            <button onClick={() => updateQuantity(item.id || item.product.id, 1)} className="p-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100"><Plus className="w-4 h-4" /></button>
                           </div>
-                       </div>
-                       <button onClick={() => removeFromCart(item.product.id)} className="absolute top-4 right-4 text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  ))
+                        </div>
+                        <button onClick={() => removeFromCart(item.id || item.product.id)} className="absolute top-4 right-4 text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    );
+                  })
                 )}
              </div>
 
