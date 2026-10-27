@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Quotation, OrderStatus } from '../types';
 import { storage } from '../services/storageService';
-import { Search, FileDown, User, Copy, CheckCircle2, Clock, Truck, Box as BoxIcon, X, Send, Edit, Trash2, DollarSign, AlertCircle } from 'lucide-react';
+import { Search, FileDown, User, Copy, CheckCircle2, Clock, Truck, Box as BoxIcon, X, Send, Edit, Trash2, DollarSign, AlertCircle, Palette, FileText, Image as ImageIcon, Download } from 'lucide-react';
 import { pdfService } from '../services/pdfService';
 
 interface Props {
@@ -260,6 +260,13 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
       .replace(/{total}/g, formattedTotal)
       .replace(/{id}/g, quotation.id);
       
+    if (quotation.orderTheme) {
+      msg += `\n🎨 *Tema da Arte:* ${quotation.orderTheme}`;
+    }
+    if (quotation.attachedFile) {
+      msg += `\n📎 *Arquivo Anexo:* ${quotation.attachedFile.name}`;
+    }
+
     if (paymentLink) {
        msg += `\n\n💳 *Link de Pagamento:*\n${paymentLink}`;
     }
@@ -337,8 +344,42 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
                 </div>
               </div>
               <h4 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><User className="w-4 h-4 text-slate-400"/> {q.customerName}</h4>
-              <p className="text-xs text-slate-500 mb-4">{new Date(q.createdAt).toLocaleString()}</p>
-              
+              <p className="text-xs text-slate-500 mb-3">{new Date(q.createdAt).toLocaleString()}</p>
+
+              {/* Tema e Arquivo Anexo */}
+              {(q.orderTheme || q.attachedFile) && (
+                <div className="mb-4 space-y-2">
+                  {q.orderTheme && (
+                    <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-2.5 text-xs text-indigo-950">
+                      <span className="font-bold flex items-center gap-1.5"><Palette className="w-3.5 h-3.5 text-indigo-600" /> Tema da Personalização:</span>
+                      <p className="mt-0.5 text-slate-700 font-medium pl-5">{q.orderTheme}</p>
+                    </div>
+                  )}
+                  {q.attachedFile && (
+                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs">
+                      <div className="flex items-center gap-2 min-w-0 pr-2">
+                        {q.attachedFile.type?.includes('pdf') ? (
+                          <FileText className="w-4 h-4 text-rose-500 shrink-0" />
+                        ) : (
+                          <ImageIcon className="w-4 h-4 text-emerald-500 shrink-0" />
+                        )}
+                        <span className="font-bold text-slate-700 truncate text-[11px]">{q.attachedFile.name}</span>
+                        <span className="text-[10px] text-slate-400 shrink-0">({(q.attachedFile.size / 1024).toFixed(0)} KB)</span>
+                      </div>
+                      <a 
+                        href={q.attachedFile.dataUrl} 
+                        download={q.attachedFile.name} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-indigo-600 font-bold text-[10px] flex items-center gap-1 shrink-0 shadow-sm transition-colors"
+                      >
+                        <Download className="w-3 h-3" /> Ver / Baixar
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Barra de Pagamento */}
               <div className="mb-4">
                 <div className="flex justify-between text-[10px] font-bold mb-1">

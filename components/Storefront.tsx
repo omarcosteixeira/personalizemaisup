@@ -26,7 +26,13 @@ import {
   Minus,
   Trash2,
   CreditCard,
-  CheckCircle2
+  CheckCircle2,
+  Upload,
+  FileText,
+  Image as ImageIcon,
+  Palette,
+  Download,
+  AlertCircle
 } from 'lucide-react';
 
 interface CartItem {
@@ -68,7 +74,9 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
-  const [checkoutData, setCheckoutData] = useState({ name: '', phone: '' });
+  const [checkoutData, setCheckoutData] = useState({ name: '', phone: '', theme: '' });
+  const [attachedFile, setAttachedFile] = useState<{ name: string; type: string; size: number; dataUrl: string } | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   
   // Order Tracking
@@ -199,6 +207,41 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.totalPrice !== undefined ? item.totalPrice : (item.product.price * item.quantity)), 0);
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+    const isImageOrPdf = validTypes.includes(file.type) || file.name.match(/\.(jpeg|jpg|png|pdf)$/i);
+
+    if (!isImageOrPdf) {
+      setFileError('Formato inválido. Por favor, envie uma imagem (JPEG/PNG) ou documento PDF.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setFileError('Arquivo muito grande. O limite máximo permitido é de 10MB.');
+      return;
+    }
+
+    setFileError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setAttachedFile({
+          name: file.name,
+          type: file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+          size: file.size,
+          dataUrl: reader.result
+        });
+      }
+    };
+    reader.onerror = () => {
+      setFileError('Erro ao carregar o arquivo. Tente novamente.');
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!checkoutData.name || !checkoutData.phone || cart.length === 0) return;
@@ -208,6 +251,8 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
       id: Math.random().toString(36).substr(2, 9),
       customerName: checkoutData.name,
       customerContact: checkoutData.phone,
+      orderTheme: checkoutData.theme.trim() || undefined,
+      attachedFile: attachedFile || undefined,
       items: cart.map(c => ({
         id: c.id,
         productId: c.product.id,
@@ -237,15 +282,15 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
 
     setCart([]);
     setShowCheckout(false);
+    setCheckoutData({ name: '', phone: '', theme: '' });
+    setAttachedFile(null);
+    setFileError(null);
     setIsCheckingOut(false);
     
     // Redirect track orders directly
     setTrackerPhone(checkoutData.phone);
     setShowOrders(true);
     fetchOrders(checkoutData.phone);
-    
-    // Also notify the store owner via Whatsapp directly?
-    // Let's just create the order. The admin panel sees it.
   };
 
   const fetchOrders = async (phone: string) => {
@@ -927,7 +972,7 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
       {/* Checkout Modal */}
       {showCheckout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-           <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl relative overflow-hidden p-8 animate-in zoom-in-95">
+           <div className="bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-[40px] shadow-2xl relative p-6 sm:p-8 animate-in zoom-in-95">
              <button onClick={() => setShowCheckout(false)} className="absolute top-6 right-6 p-2 bg-slate-100 hover:bg-slate-200 rounded-full"><X className="w-5 h-5"/></button>
              <h3 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2"><CreditCard className="w-6 h-6 text-indigo-500"/> Finalizar Compra</h3>
              
@@ -938,14 +983,98 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
 
              <form onSubmit={handleCheckoutSubmit} className="space-y-4">
                 <div>
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-2 mb-1 block">Nome Completo</label>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-2 mb-1 block">Nome Completo *</label>
                   <input type="text" required value={checkoutData.name} onChange={e => setCheckoutData({...checkoutData, name: e.target.value})} placeholder="Ex: João da Silva" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
                 </div>
                 <div>
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-2 mb-1 block">WhatsApp</label>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-2 mb-1 block">WhatsApp *</label>
                   <input type="tel" required value={checkoutData.phone} onChange={e => setCheckoutData({...checkoutData, phone: e.target.value})} placeholder="(11) 99999-9999" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
                   <p className="text-[10px] text-slate-400 mt-2 ml-2">Você precisará deste número para acompanhar seu pedido.</p>
                 </div>
+
+                {/* Personalização: Tema e Upload de Imagem ou PDF */}
+                <div className="bg-indigo-50/60 p-4 rounded-2xl border border-indigo-100 space-y-3.5">
+                  <div className="flex items-center gap-2 text-indigo-900 font-black text-xs uppercase tracking-wider">
+                    <Palette className="w-4 h-4 text-indigo-600" />
+                    <span>Tema & Arte para Personalização</span>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 mb-1 block">
+                      Tema do Pedido / Descrição da Arte <span className="text-slate-400 font-normal">(Opcional)</span>
+                    </label>
+                    <textarea 
+                      rows={2}
+                      value={checkoutData.theme}
+                      onChange={e => setCheckoutData({ ...checkoutData, theme: e.target.value })}
+                      placeholder="Ex: Tema Homem-Aranha, cores azul e vermelho, nome Enzo 5 anos..."
+                      className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 transition-all resize-none font-medium"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1 pl-1">
+                      Descreva detalhes do tema, cores, textos ou ideias para a arte.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 mb-1 block">
+                      Enviar Imagem ou Arquivo <span className="text-slate-400 font-normal">(PDF ou JPEG)</span>
+                    </label>
+
+                    {!attachedFile ? (
+                      <div>
+                        <label className="flex flex-col items-center justify-center border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-white hover:bg-indigo-50/50 rounded-2xl p-4 cursor-pointer transition-all group">
+                          <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mb-1 group-hover:scale-105 transition-transform">
+                            <Upload className="w-5 h-5" />
+                          </div>
+                          <span className="text-xs font-bold text-slate-700">Clique para enviar imagem ou PDF</span>
+                          <span className="text-[10px] text-slate-400 mt-0.5">Formatos suportados: PDF, JPEG, JPG ou PNG (até 10MB)</span>
+                          <input 
+                            type="file" 
+                            accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" 
+                            onChange={handleFileUpload} 
+                            className="hidden" 
+                          />
+                        </label>
+                        {fileError && (
+                          <p className="text-[11px] text-rose-600 font-bold mt-1.5 flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {fileError}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between p-3 bg-white border border-indigo-200 rounded-xl shadow-sm">
+                        <div className="flex items-center gap-3 min-w-0 pr-2">
+                          {attachedFile.type.includes('pdf') ? (
+                            <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                              <FileText className="w-5 h-5" />
+                            </div>
+                          ) : (
+                            <img 
+                              src={attachedFile.dataUrl} 
+                              alt="Prévia" 
+                              className="w-10 h-10 object-cover rounded-lg border border-slate-200 shrink-0" 
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-800 truncate">{attachedFile.name}</p>
+                            <p className="text-[10px] text-slate-400">
+                              {attachedFile.type.includes('pdf') ? 'Documento PDF' : 'Imagem'} • {(attachedFile.size / 1024).toFixed(0)} KB
+                            </p>
+                          </div>
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => { setAttachedFile(null); setFileError(null); }}
+                          className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-50 transition-colors"
+                          title="Remover anexo"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <button 
                   type="submit" 
                   disabled={isCheckingOut}
@@ -998,13 +1127,48 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
                       </div>
                       
                       <div className="space-y-2 mb-4">
-                        {order.items.map((item, idx) => (
-                          <div key={idx} className="flex justify-between text-sm">
-                            <span className="text-slate-600"><span className="font-bold">{item.quantity}x</span> {item.product.name}</span>
-                            <span className="font-bold text-slate-800">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.totalPrice)}</span>
-                          </div>
-                        ))}
+                        {order.items.map((item, idx) => {
+                          const itemTotal = item.total !== undefined ? item.total : ((item as any).totalPrice !== undefined ? (item as any).totalPrice : (item.unitPrice * item.quantity));
+                          return (
+                            <div key={idx} className="flex justify-between text-sm">
+                              <span className="text-slate-600"><span className="font-bold">{item.quantity}x</span> {item.productName || (item as any).product?.name}</span>
+                              <span className="font-bold text-slate-800">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(itemTotal)}</span>
+                            </div>
+                          );
+                        })}
                       </div>
+
+                      {order.orderTheme && (
+                        <div className="bg-indigo-50/80 border border-indigo-100 rounded-2xl p-3 text-xs text-indigo-950 mb-3">
+                          <span className="font-bold flex items-center gap-1.5"><Palette className="w-3.5 h-3.5 text-indigo-600" /> Tema da Personalização:</span>
+                          <p className="mt-1 text-slate-700 font-medium pl-5">{order.orderTheme}</p>
+                        </div>
+                      )}
+
+                      {order.attachedFile && (
+                        <div className="flex items-center justify-between bg-white border border-slate-200 rounded-2xl p-3 text-xs mb-3 shadow-sm">
+                          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                            {order.attachedFile.type.includes('pdf') ? (
+                              <FileText className="w-4 h-4 text-rose-500 shrink-0" />
+                            ) : (
+                              <ImageIcon className="w-4 h-4 text-emerald-500 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-800 truncate text-[11px]">{order.attachedFile.name}</p>
+                              <p className="text-[10px] text-slate-400">{(order.attachedFile.size / 1024).toFixed(0)} KB</p>
+                            </div>
+                          </div>
+                          <a 
+                            href={order.attachedFile.dataUrl} 
+                            download={order.attachedFile.name} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-indigo-600 font-bold text-[10px] shrink-0 flex items-center gap-1 shadow-sm transition-colors"
+                          >
+                            <Download className="w-3 h-3" /> Baixar
+                          </a>
+                        </div>
+                      )}
 
                       <div className="flex justify-between items-center border-t border-slate-200 pt-4">
                         <span className="font-bold text-slate-500 text-sm">Total Geral:</span>

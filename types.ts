@@ -129,6 +129,13 @@ export interface Quotation {
   isPaid?: boolean; // True se TOTALMENTE pago
   paidAt?: string;
   amountPaid?: number; // Valor efetivamente pago (pode ser parcial)
+  orderTheme?: string;
+  attachedFile?: {
+    name: string;
+    type: string;
+    size: number;
+    dataUrl: string;
+  };
 }
 
 export interface Coupon {

@@ -61,7 +61,8 @@ service cloud.firestore {
       // Apenas o dono pode ler/escrever. Visitantes da loja NÃO acessam isso.
       
       match /quotations/{document=**} {
-        allow read, write: if isOwner(tenantId);
+        allow read, create: if true; // Visitantes da loja pública podem fazer pedidos e consultar pelo WhatsApp
+        allow update, delete: if isOwner(tenantId);
       }
       
       match /customers/{document=**} {
