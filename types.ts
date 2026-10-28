@@ -194,6 +194,19 @@ export interface AppSettings {
     autoSendLink?: boolean;
   };
   productCategories?: string[];
+  slug?: string;
+}
+
+export interface CustomerReview {
+  id: string;
+  orderId?: string;
+  customerName: string;
+  customerPhone?: string;
+  rating: number; // 0 a 5 estrelas
+  message: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+  approvedAt?: string;
 }
 
 export interface StockItem {

@@ -4,12 +4,12 @@ import {
   Plus, History, Package, LayoutDashboard, Printer, Box, ExternalLink, 
   ChevronLeft, Settings, Ticket, Users, Calculator, Layers, FileSpreadsheet, 
   Type, ShoppingCart, Menu, LogOut, ShieldCheck, X, MoreHorizontal, Copy,
-  Sparkles, Wallet, Megaphone
+  Sparkles, Wallet, Megaphone, Star, Link2, Check
 } from 'lucide-react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from './services/firebaseService';
-import { storage } from './services/storageService';
+import { storage, slugify } from './services/storageService';
 import { Product, Quotation, StockItem, AppSettings } from './types';
 
 // Components
@@ -32,8 +32,36 @@ import PromotionalAI from './components/PromotionalAI';
 import LandingPage from './components/LandingPage';
 import AccountsPayable from './components/AccountsPayable';
 import ProspectsPage from './components/ProspectsPage';
+import ReviewsManagement from './components/ReviewsManagement';
 
-type Tab = 'dashboard' | 'new' | 'history' | 'products' | 'store' | 'settings' | 'coupons' | 'customers' | 'fonts' | 'pdv' | 'admin' | 'finance' | 'prospects';
+type Tab = 'dashboard' | 'new' | 'history' | 'products' | 'store' | 'settings' | 'coupons' | 'customers' | 'fonts' | 'pdv' | 'admin' | 'finance' | 'prospects' | 'reviews';
+
+// Helper para detectar acesso público à loja via slug na URL ou query param
+// Ex: personalizemais.vercel.app/ateliearianeartes ou ?store=... ou #/ateliearianeartes
+const getPublicStoreSlugOrId = (): string | null => {
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get('store') || params.get('loja');
+  if (fromQuery) return fromQuery;
+
+  // Checa hash route (ex: #/ateliearianeartes ou #ateliearianeartes)
+  if (window.location.hash) {
+    const rawHash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
+    const hashClean = rawHash.replace(/^loja\//, '');
+    const knownInternal = ['dashboard', 'new', 'history', 'products', 'settings', 'admin', 'reviews', 'coupons', 'customers', 'finance', 'pdv', 'prospects', 'fonts'];
+    if (hashClean && !knownInternal.includes(hashClean)) {
+      return hashClean;
+    }
+  }
+
+  // Checa pathname (ex: /ateliearianeartes)
+  const pathClean = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0];
+  const knownPaths = ['', 'index.html', 'api', 'assets', 'login', 'admin'];
+  if (pathClean && !knownPaths.includes(pathClean)) {
+    return pathClean;
+  }
+
+  return null;
+};
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -44,6 +72,7 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [copiedStoreLink, setCopiedStoreLink] = useState(false);
   
   const [products, setProducts] = useState<Product[]>([]);
   const [quotations, setQuotations] = useState<Quotation[]>([]);
@@ -55,19 +84,16 @@ const App: React.FC = () => {
 
   // Estados para a Loja Pública (Inicialização Preguiçosa para evitar flash da Landing Page)
   const [isPublicStore, setIsPublicStore] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return !!params.get('store');
+    return !!getPublicStoreSlugOrId();
   });
-  const [publicData, setPublicData] = useState<{ products: Product[], settings: AppSettings } | null>(null);
+  const [publicData, setPublicData] = useState<{ products: Product[], settings: AppSettings, tenantId?: string } | null>(null);
 
   useEffect(() => {
-    // Checa se é um acesso público à loja via URL ?store=USER_ID
-    const params = new URLSearchParams(window.location.search);
-    const storeId = params.get('store');
+    // Checa se é um acesso público à loja via slug ou query param
+    const storeIdentifier = getPublicStoreSlugOrId();
     
-    if (storeId) {
-      // Já está setado via lazy init, mas buscamos os dados aqui
-      storage.getPublicData(storeId).then(data => {
+    if (storeIdentifier) {
+      storage.getPublicData(storeIdentifier).then(data => {
         setPublicData(data);
         setIsSyncing(false);
       }).catch(err => {
@@ -149,9 +175,8 @@ const App: React.FC = () => {
 
   // 2. Renderização da Loja Pública Carregada
   if (isPublicStore && publicData) {
-    const params = new URLSearchParams(window.location.search);
-    const storeId = params.get('store');
-    return <Storefront products={publicData.products} settings={publicData.settings} tenantId={storeId || undefined} />;
+    const storeIdentifier = getPublicStoreSlugOrId();
+    return <Storefront products={publicData.products} settings={publicData.settings} tenantId={publicData.tenantId || storeIdentifier || undefined} />;
   }
 
   // 3. Landing Page para Visitantes (não loja pública)
@@ -195,6 +220,7 @@ const App: React.FC = () => {
         onEdit={(q) => { setEditingQuotation(q); setDuplicateTarget(null); setActiveTab('new'); }}
         onUpdate={refreshData}
       />;
+      case 'reviews': return <ReviewsManagement onReviewsUpdated={refreshData} />;
       case 'customers': return <CustomerManagement />;
       case 'admin': return <AdminPanel />;
       case 'finance': return <AccountsPayable />;
@@ -232,6 +258,7 @@ const App: React.FC = () => {
     { id: 'new', label: 'Novo', icon: Plus },
     { id: 'pdv', label: 'PDV', icon: ShoppingCart },
     { id: 'history', label: 'Pedidos', icon: History },
+    { id: 'reviews', label: 'Avaliações', icon: Star },
     { id: 'finance', label: 'Financeiro', icon: Wallet },
     { id: 'products', label: 'Produtos', icon: Layers },
     { id: 'customers', label: 'Clientes', icon: Users },
@@ -244,6 +271,16 @@ const App: React.FC = () => {
 
   const mainNav = navItems.slice(0, 4);
   const moreNav = navItems.slice(4);
+  const appSettings = storage.getSettings();
+  const storeSlug = appSettings.slug || slugify(appSettings.businessName || 'ateliearianeartes');
+  const storeVanityUrl = `personalizemais.vercel.app/${storeSlug}`;
+  const storeDirectUrl = `${window.location.origin}/${storeSlug}`;
+
+  const handleCopyStoreLink = () => {
+    navigator.clipboard.writeText(storeDirectUrl);
+    setCopiedStoreLink(true);
+    setTimeout(() => setCopiedStoreLink(false), 2000);
+  };
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 text-slate-900 lg:flex-row overflow-hidden">
@@ -259,7 +296,28 @@ const App: React.FC = () => {
               <item.icon className="w-5 h-5" /> {item.label}
             </button>
           ))}
-          <div className="pt-6 pb-2 px-4 border-t border-indigo-800/50 mt-4">
+
+          {/* Card Link da Loja (Site + Nome Fantasia) */}
+          <div className="mx-1 my-3 p-3 bg-indigo-950/70 rounded-2xl border border-indigo-800/80">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1">
+                <Link2 className="w-3 h-3 text-indigo-400" /> Link da Loja
+              </span>
+              <button 
+                onClick={handleCopyStoreLink} 
+                className="text-[9px] font-black text-indigo-300 hover:text-white uppercase flex items-center gap-1 transition-colors"
+                title="Copiar Link da Loja"
+              >
+                {copiedStoreLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                {copiedStoreLink ? 'Copiado' : 'Copiar'}
+              </button>
+            </div>
+            <p className="text-[10px] font-mono text-indigo-200 font-bold truncate">
+              {storeVanityUrl}
+            </p>
+          </div>
+
+          <div className="pt-4 pb-2 px-4 border-t border-indigo-800/50 mt-2">
             <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Atalhos Externos</p>
           </div>
           <button onClick={() => setActiveTab('store')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-emerald-300 hover:bg-indigo-800 transition-colors">
@@ -282,6 +340,20 @@ const App: React.FC = () => {
             {navItems.find(i => i.id === activeTab)?.label}
           </h2>
           <div className="flex items-center gap-3">
+            {/* Link de Acesso da Loja no Topo */}
+            <div className="hidden md:flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-xl text-xs">
+              <Link2 className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="font-mono text-indigo-900 font-bold text-[11px]">{storeVanityUrl}</span>
+              <button 
+                onClick={handleCopyStoreLink}
+                className="p-1 hover:bg-white rounded-lg text-indigo-600 font-bold transition-all ml-1 flex items-center gap-1 text-[10px]"
+                title="Copiar Link da Loja"
+              >
+                {copiedStoreLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedStoreLink ? 'Copiado!' : 'Copiar'}</span>
+              </button>
+            </div>
+
             <div className="hidden sm:flex flex-col items-end">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Usuário Conectado</span>
               <span className="text-[11px] font-black text-slate-700 truncate max-w-[150px]">{user?.email}</span>

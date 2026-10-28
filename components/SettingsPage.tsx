@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { storage, DEFAULT_PRODUCT_CATEGORIES } from '../services/storageService';
+import { storage, DEFAULT_PRODUCT_CATEGORIES, slugify } from '../services/storageService';
 import { auth } from '../services/firebaseService';
 import { AppSettings, ShippingOption, SidebarBanner, CustomFont } from '../types';
 import { 
@@ -8,7 +8,7 @@ import {
   Image as ImageIcon, X, Truck, Plus, Layout, MessageSquare, Palette, Settings, 
   ShoppingBag, Music, ExternalLink, ToggleLeft, ToggleRight, Type, FileUp, Trash2, 
   Copy, Check, Sparkles, Key, CreditCard, Layers, Edit2, RotateCcw, Tag, 
-  FolderPlus, AlertCircle, Package, Search
+  FolderPlus, AlertCircle, Package, Search, Link2, Wand2
 } from 'lucide-react';
 
 const SettingsPage: React.FC = () => {
@@ -60,8 +60,10 @@ const SettingsPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [activeTab, settings.webhookUrl, settings.botSessionId]);
 
-  // Gera o link único da loja
-  const storeLink = `${window.location.origin}/?store=${auth.currentUser?.uid}`;
+  // Gera o link amigável da loja: site + nome fantasia da empresa (ex: personalizemais.vercel.app/ateliearianeartes)
+  const currentSlug = settings.slug || slugify(settings.businessName || 'ateliearianeartes');
+  const storeLink = `${window.location.origin}/${currentSlug}`;
+  const displayUrl = `personalizemais.vercel.app/${currentSlug}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(storeLink);
@@ -232,21 +234,29 @@ const SettingsPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Link da Loja Card */}
-      <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[32px] flex flex-col md:flex-row items-center justify-between gap-4">
+      {/* Link da Loja Card (Site + Nome Fantasia) */}
+      <div className="bg-gradient-to-r from-indigo-50 to-indigo-100/60 border border-indigo-200/80 p-6 rounded-[32px] flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-white rounded-2xl shadow-sm text-indigo-600">
+          <div className="p-3.5 bg-white rounded-2xl shadow-sm text-indigo-600 border border-indigo-100">
             <Globe className="w-6 h-6" />
           </div>
           <div>
-            <h4 className="font-black text-indigo-900 text-sm uppercase tracking-widest">Link da Sua Loja Online</h4>
-            <p className="text-xs text-indigo-600/70 font-bold truncate max-w-[200px] md:max-w-xs">{storeLink}</p>
+            <div className="flex items-center gap-2">
+              <h4 className="font-black text-indigo-900 text-sm uppercase tracking-widest">Link de Acesso da Sua Loja</h4>
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase rounded-full">Oficial</span>
+            </div>
+            <p className="text-xs text-indigo-700 font-mono font-bold mt-0.5 break-all">
+              {displayUrl}
+            </p>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              Seus clientes podem acessar diretamente via: <span className="font-semibold">{storeLink}</span>
+            </p>
           </div>
         </div>
-        <div className="flex gap-2 w-full md:w-auto">
+        <div className="flex gap-2 w-full md:w-auto shrink-0">
           <button 
             onClick={handleCopyLink}
-            className="flex-1 md:flex-none px-6 py-3 bg-white text-indigo-600 font-bold rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-indigo-50 transition-all"
+            className="flex-1 md:flex-none px-6 py-3 bg-white hover:bg-slate-50 text-indigo-600 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 border border-indigo-200 shadow-sm transition-all active:scale-95"
           >
             {copied ? <Check className="w-4 h-4 text-emerald-500"/> : <Copy className="w-4 h-4" />}
             {copied ? 'COPIADO!' : 'COPIAR LINK'}
@@ -255,9 +265,9 @@ const SettingsPage: React.FC = () => {
             href={storeLink} 
             target="_blank" 
             rel="noreferrer"
-            className="flex-1 md:flex-none px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-md hover:bg-indigo-700"
+            className="flex-1 md:flex-none px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md shadow-indigo-200 transition-all active:scale-95"
           >
-            <ExternalLink className="w-4 h-4" /> TESTAR LOJA
+            <ExternalLink className="w-4 h-4" /> ABRIR LOJA
           </a>
         </div>
       </div>
@@ -299,7 +309,53 @@ const SettingsPage: React.FC = () => {
             </div>
 
             <div className="md:col-span-2 bg-white p-8 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-2 gap-4">
-               <div className="col-span-2 space-y-1"><label className="text-xs font-bold text-slate-400 uppercase">Nome Fantasia</label><input type="text" value={settings.businessName} onChange={e => setSettings({...settings, businessName: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" /></div>
+               <div className="col-span-2 space-y-1">
+                 <label className="text-xs font-bold text-slate-400 uppercase">Nome Fantasia da Empresa</label>
+                 <input 
+                   type="text" 
+                   value={settings.businessName} 
+                   onChange={e => {
+                     const newName = e.target.value;
+                     setSettings({
+                       ...settings, 
+                       businessName: newName,
+                       slug: settings.slug || slugify(newName)
+                     });
+                   }} 
+                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800" 
+                 />
+               </div>
+
+               {/* Slug do link da loja */}
+               <div className="col-span-2 space-y-1.5 bg-indigo-50/60 p-4 rounded-2xl border border-indigo-100">
+                 <div className="flex items-center justify-between">
+                   <label className="text-xs font-black text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                     <Link2 className="w-4 h-4 text-indigo-600" /> Link de Acesso da Loja (Site + Nome Fantasia)
+                   </label>
+                   <button
+                     type="button"
+                     onClick={() => setSettings({ ...settings, slug: slugify(settings.businessName) })}
+                     className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 underline"
+                   >
+                     <Wand2 className="w-3 h-3" /> Gerar do Nome Fantasia
+                   </button>
+                 </div>
+                 <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+                   <span className="pl-3 pr-1 py-3 text-xs font-bold text-slate-400 select-none shrink-0 font-mono">
+                     personalizemais.vercel.app/
+                   </span>
+                   <input 
+                     type="text" 
+                     value={settings.slug || slugify(settings.businessName || '')} 
+                     onChange={e => setSettings({ ...settings, slug: slugify(e.target.value) })}
+                     placeholder="ateliearianeartes"
+                     className="w-full p-3 pl-0 bg-transparent outline-none font-mono font-bold text-indigo-700 text-xs" 
+                   />
+                 </div>
+                 <p className="text-[10px] text-slate-500 mt-1">
+                   Exemplo: <strong>ateliearianeartes</strong> → Seus clientes acessam sua loja diretamente em <code>personalizemais.vercel.app/ateliearianeartes</code>
+                 </p>
+               </div>
                <div className="col-span-2 space-y-1"><label className="text-xs font-bold text-slate-400 uppercase">Endereço</label><input type="text" value={settings.address} onChange={e => setSettings({...settings, address: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" /></div>
                <div className="space-y-1"><label className="text-xs font-bold text-slate-400 uppercase">WhatsApp</label><input type="text" value={settings.phone} onChange={e => setSettings({...settings, phone: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" /></div>
                <div className="space-y-1"><label className="text-xs font-bold text-slate-400 uppercase">E-mail</label><input type="text" value={settings.email} onChange={e => setSettings({...settings, email: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" /></div>

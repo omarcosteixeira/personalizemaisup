@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Quotation, OrderStatus } from '../types';
+import { Quotation, OrderStatus, CustomerReview } from '../types';
 import { storage } from '../services/storageService';
-import { Search, FileDown, User, Copy, CheckCircle2, Clock, Truck, Box as BoxIcon, X, Send, Edit, Trash2, DollarSign, AlertCircle, Palette, FileText, Image as ImageIcon, Download } from 'lucide-react';
+import { Search, FileDown, User, Copy, CheckCircle2, Clock, Truck, Box as BoxIcon, X, Send, Edit, Trash2, DollarSign, AlertCircle, Palette, FileText, Image as ImageIcon, Download, Star, ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react';
 import { pdfService } from '../services/pdfService';
+import CustomerReviewModal from './CustomerReviewModal';
 
 interface Props {
   quotations: Quotation[];
@@ -16,6 +17,10 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
   const [searchTerm, setSearchTerm] = useState('');
   const [localQuotations, setLocalQuotations] = useState<Quotation[]>(quotations);
   
+  // Reviews state
+  const [reviews, setReviews] = useState<CustomerReview[]>(() => storage.getReviews());
+  const [reviewModalQuotation, setReviewModalQuotation] = useState<Quotation | null>(null);
+
   // Modal de Pagamento
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedForPay, setSelectedForPay] = useState<Quotation | null>(null);
@@ -424,6 +429,68 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
                   </div>
                 </div>
 
+                {/* Bloco de Avaliação do Cliente (se houver) */}
+                {(() => {
+                  const orderReview = reviews.find(r => r.orderId === q.id);
+                  if (!orderReview) return null;
+                  const isApproved = orderReview.status === 'APPROVED';
+                  const isPending = orderReview.status === 'PENDING';
+                  const isRejected = orderReview.status === 'REJECTED';
+
+                  return (
+                    <div className={`p-3 rounded-2xl border text-xs space-y-2 ${
+                      isPending
+                        ? 'bg-amber-50/90 border-amber-300'
+                        : isApproved
+                        ? 'bg-emerald-50/80 border-emerald-200'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                          <span className="font-black text-slate-800">
+                            {orderReview.rating === 0 ? '0 estrelas' : `${orderReview.rating}/5★`}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-500">
+                            {isPending ? '• Aguarda sua aprovação' : isApproved ? '• Aprovado no site' : '• Rejeitado'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {!isApproved && (
+                            <button
+                              onClick={() => {
+                                storage.updateReviewStatus(orderReview.id, 'APPROVED');
+                                setReviews(storage.getReviews());
+                              }}
+                              className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-black uppercase flex items-center gap-1 shadow-sm"
+                              title="Aprovar mensagem para exibir no rodapé do site"
+                            >
+                              <ThumbsUp className="w-2.5 h-2.5" /> Aprovar
+                            </button>
+                          )}
+                          {!isRejected && (
+                            <button
+                              onClick={() => {
+                                storage.updateReviewStatus(orderReview.id, 'REJECTED');
+                                setReviews(storage.getReviews());
+                              }}
+                              className="px-2 py-0.5 bg-slate-200 hover:bg-red-100 hover:text-red-700 text-slate-600 rounded-lg text-[9px] font-bold uppercase"
+                              title="Rejeitar mensagem"
+                            >
+                              <ThumbsDown className="w-2.5 h-2.5" /> Rejeitar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {orderReview.message && (
+                        <p className="text-[11px] text-slate-700 italic leading-snug line-clamp-2">
+                          "{orderReview.message}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div className="grid grid-cols-2 gap-2">
                   <button 
                     onClick={() => notifyClient(q)}
@@ -438,6 +505,15 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
                     {q.isPaid ? <><CheckCircle2 className="w-3 h-3"/> Quitado</> : <><DollarSign className="w-3 h-3"/> Baixar $</>}
                   </button>
                 </div>
+
+                {/* Botão de Solicitar Avaliação de 0 a 5 Estrelas */}
+                <button
+                  onClick={() => setReviewModalQuotation(q)}
+                  className="w-full py-2.5 bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm active:scale-98"
+                >
+                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                  {reviews.some(r => r.orderId === q.id) ? 'Ver / Editar Avaliação' : 'Solicitar Avaliação (0 a 5★)'}
+                </button>
               </div>
             </div>
           );
@@ -499,6 +575,14 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
           </div>
         </div>
       )}
+
+      {/* Modal de Avaliação do Cliente */}
+      <CustomerReviewModal
+        isOpen={!!reviewModalQuotation}
+        quotation={reviewModalQuotation}
+        onClose={() => setReviewModalQuotation(null)}
+        onSubmitted={() => setReviews(storage.getReviews())}
+      />
     </div>
   );
 };

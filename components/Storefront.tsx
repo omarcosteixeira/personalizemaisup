@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Product, PricingMode, AppSettings, SidebarBanner, Quotation } from '../types';
+import { Product, PricingMode, AppSettings, SidebarBanner, Quotation, CustomerReview } from '../types';
 import { storage } from '../services/storageService';
+import CustomerReviewModal from './CustomerReviewModal';
 import { 
   ShoppingCart, 
   MessageCircle, 
@@ -85,6 +86,11 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
   const [clientOrders, setClientOrders] = useState<Quotation[]>([]);
   const [isFetchingOrders, setIsFetchingOrders] = useState(false);
 
+  // Reviews System
+  const [reviews, setReviews] = useState<CustomerReview[]>([]);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [evaluatingQuotation, setEvaluatingQuotation] = useState<Quotation | null>(null);
+
   useEffect(() => {
     try {
       // @ts-ignore
@@ -92,7 +98,19 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
     } catch (e) {
       console.error('AdSense error:', e);
     }
-  }, []);
+
+    // Carregar avaliações aprovadas
+    storage.getPublicReviews(tenantId).then(revs => {
+      setReviews(revs);
+    });
+
+    // Detectar parâmetro ?avaliar=ID na URL
+    const params = new URLSearchParams(window.location.search);
+    const avaliarId = params.get('avaliar');
+    if (avaliarId) {
+      setShowReviewModal(true);
+    }
+  }, [tenantId]);
 
   const localSettings = storage.getSettings();
   const settings = propSettings || localSettings;
@@ -590,6 +608,113 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
           </aside>
         )}
       </div>
+
+      {/* Seção de Avaliações & Depoimentos dos Clientes (Na parte inferior do site) */}
+      <section className="max-w-7xl mx-auto px-4 lg:px-6 my-16">
+        <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 rounded-[40px] p-8 lg:p-14 text-white shadow-2xl relative overflow-hidden">
+          {/* Background Ambient Glow */}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+          <div className="relative z-10">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+              <div>
+                <span className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-md rounded-full text-amber-300 text-[11px] font-black uppercase tracking-widest mb-3 border border-white/10">
+                  <Star className="w-3.5 h-3.5 fill-amber-300" /> Depoimentos dos Clientes
+                </span>
+                <h3 className="text-3xl lg:text-4xl font-black tracking-tight text-white">
+                  O que nossos clientes dizem
+                </h3>
+                <p className="text-indigo-200 text-sm mt-2 max-w-xl">
+                  Opiniões reais de clientes que confiaram na qualidade, acabamento e atendimento da {settings.businessName}.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/10">
+                  <div className="flex text-amber-400">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star key={s} className="w-4 h-4 fill-amber-400" />
+                    ))}
+                  </div>
+                  <span className="font-black text-sm text-white">
+                    {reviews.length > 0
+                      ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
+                      : '5.0'}
+                  </span>
+                  <span className="text-[11px] text-indigo-200">
+                    ({reviews.length} {reviews.length === 1 ? 'avaliação' : 'avaliações'})
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => setShowReviewModal(true)}
+                  className="px-5 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95 flex items-center gap-2"
+                >
+                  <Star className="w-4 h-4 fill-slate-950" /> Deixar uma Avaliação
+                </button>
+              </div>
+            </div>
+
+            {/* Grid de Depoimentos Aprovados */}
+            {reviews.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {reviews.map((rev) => (
+                  <div
+                    key={rev.id}
+                    className="bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 rounded-3xl p-6 transition-all duration-300 flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star
+                              key={s}
+                              className={`w-4 h-4 ${
+                                s <= rev.rating
+                                  ? 'text-amber-400 fill-amber-400'
+                                  : 'text-white/20'
+                              }`}
+                            />
+                          ))}
+                          <span className="text-xs font-bold text-amber-300 ml-1">
+                            {rev.rating === 0 ? '0★' : `${rev.rating}/5`}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                          Compra Verificada ✓
+                        </span>
+                      </div>
+
+                      <p className="text-indigo-100 text-sm leading-relaxed italic mb-6">
+                        "{rev.message}"
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-4 border-t border-white/10">
+                      <div className="w-10 h-10 rounded-xl bg-white/10 text-white font-black flex items-center justify-center text-sm uppercase">
+                        {rev.customerName.charAt(0) || 'C'}
+                      </div>
+                      <div>
+                        <p className="font-bold text-sm text-white">{rev.customerName}</p>
+                        <p className="text-[10px] text-indigo-300">
+                          {new Date(rev.createdAt).toLocaleDateString('pt-BR')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-white/5 rounded-3xl border border-white/10">
+                <Star className="w-10 h-10 text-amber-400/40 mx-auto mb-2" />
+                <p className="text-indigo-200 font-bold text-sm">Nenhum depoimento publicado ainda.</p>
+                <p className="text-xs text-indigo-300/70 mt-1">Seja o primeiro a avaliar nossa loja!</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-16 px-6 mt-12">
@@ -1184,10 +1309,24 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
                     </div>
                   ))
                 )}
-             </div>
-           </div>
-        </div>
-      )}
+              </div>
+            </div>
+          </div>
+        )}
+
+      {/* Modal de Avaliação do Cliente */}
+      <CustomerReviewModal
+        isOpen={showReviewModal}
+        quotation={evaluatingQuotation}
+        tenantId={tenantId}
+        onClose={() => {
+          setShowReviewModal(false);
+          setEvaluatingQuotation(null);
+        }}
+        onSubmitted={() => {
+          storage.getPublicReviews(tenantId).then(setReviews);
+        }}
+      />
     </div>
   );
 };

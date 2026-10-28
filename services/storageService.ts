@@ -1,9 +1,56 @@
 
-import { Product, Quotation, StockItem, StockMovement, AppSettings, Coupon, Customer, CustomFont, SystemConfig, PayableAccount, Prospect, MessageTemplate } from '../types';
+import { Product, Quotation, StockItem, StockMovement, AppSettings, Coupon, Customer, CustomFont, SystemConfig, PayableAccount, Prospect, MessageTemplate, CustomerReview } from '../types';
 import { db, auth } from './firebaseService';
 import { 
   collection, doc, setDoc, getDocs, deleteDoc, getDoc, query, orderBy 
 } from 'firebase/firestore';
+
+export const slugify = (text: string): string => {
+  if (!text) return 'loja';
+  return text
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]/g, '') || 'loja';
+};
+
+export const INITIAL_SEED_REVIEWS: CustomerReview[] = [
+  {
+    id: 'rev-seed-1',
+    orderId: 'PED-1024',
+    customerName: 'Mariana Souza',
+    customerPhone: '(11) 98765-4321',
+    rating: 5,
+    message: 'Super recomendo! O banner e os personalizados da festa da minha filha ficaram impecáveis, com cores vivas e entrega super rápida!',
+    status: 'APPROVED',
+    createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+    approvedAt: new Date(Date.now() - 2 * 86400000).toISOString()
+  },
+  {
+    id: 'rev-seed-2',
+    orderId: 'PED-1025',
+    customerName: 'Lucas Ferreira',
+    customerPhone: '(11) 99887-1122',
+    rating: 5,
+    message: 'Excelente qualidade na impressão das lonas e no adesivo automotivo. O corte veio no milímetro certo. Atendimento nota 10!',
+    status: 'APPROVED',
+    createdAt: new Date(Date.now() - 6 * 86400000).toISOString(),
+    approvedAt: new Date(Date.now() - 5 * 86400000).toISOString()
+  },
+  {
+    id: 'rev-seed-3',
+    orderId: 'PED-1026',
+    customerName: 'Ariane Lima',
+    customerPhone: '(21) 97654-3210',
+    rating: 5,
+    message: 'Os rótulos para nossos brindes corporativos ficaram maravilhosos! Nossos clientes elogiaram bastante o acabamento. Parabéns!',
+    status: 'APPROVED',
+    createdAt: new Date(Date.now() - 9 * 86400000).toISOString(),
+    approvedAt: new Date(Date.now() - 8 * 86400000).toISOString()
+  }
+];
 
 export const DEFAULT_PRODUCT_CATEGORIES: string[] = [
   'Banners & Lonas',
@@ -19,7 +66,8 @@ export const DEFAULT_PRODUCT_CATEGORIES: string[] = [
 ];
 
 const DEFAULT_SETTINGS: AppSettings = {
-  businessName: 'Personalize +',
+  businessName: 'Ateliê Ariane Artes',
+  slug: 'ateliearianeartes',
   address: 'Rua das Impressões, 123 - Centro',
   phone: '(11) 98765-4321',
   email: 'contato@personalizeplus.com',
@@ -107,7 +155,8 @@ export const storage = {
       { k: 'coupons', fb: 'coupons' },
       { k: 'payables', fb: 'payables' },
       { k: 'prospects', fb: 'prospects' },
-      { k: 'message_templates', fb: 'message_templates' }
+      { k: 'message_templates', fb: 'message_templates' },
+      { k: 'reviews', fb: 'reviews' }
     ];
 
     const syncTasks = collections.map(async (col) => {
@@ -175,13 +224,46 @@ export const storage = {
     removeFromFirebase('payables', id);
   },
 
-  getPublicData: async (tenantId: string) => {
-    const path = `tenants/${tenantId}`;
-    const productsSnap = await getDocs(collection(db, `${path}/products`));
-    const products = productsSnap.docs.map(d => d.data() as Product);
-    const settingsSnap = await getDoc(doc(db, `${path}/settings`, 'global'));
-    const settings = settingsSnap.exists() ? (settingsSnap.data() as AppSettings) : DEFAULT_SETTINGS;
-    return { products, settings };
+  getPublicData: async (storeIdentifier: string) => {
+    let tenantId = storeIdentifier;
+    // Check if storeIdentifier is a registered slug in Firestore
+    try {
+      const slugDoc = await getDoc(doc(db, 'slugs', storeIdentifier));
+      if (slugDoc.exists() && slugDoc.data()?.tenantId) {
+        tenantId = slugDoc.data().tenantId;
+      }
+    } catch (e) {}
+
+    try {
+      const path = `tenants/${tenantId}`;
+      const productsSnap = await getDocs(collection(db, `${path}/products`));
+      const products = productsSnap.docs.map(d => d.data() as Product);
+      const settingsSnap = await getDoc(doc(db, `${path}/settings`, 'global'));
+      const settings = settingsSnap.exists() ? (settingsSnap.data() as AppSettings) : DEFAULT_SETTINGS;
+      if (products.length > 0 || settingsSnap.exists()) {
+        return { products, settings, tenantId };
+      }
+    } catch (e) {
+      // Offline / permission fallback
+    }
+
+    // LocalStorage fallback for current tenant or saved slug
+    const localSettings = storage.getSettings();
+    const currentSlug = localSettings.slug || slugify(localSettings.businessName);
+    if (
+      storeIdentifier === currentSlug ||
+      storeIdentifier === 'ateliearianeartes' ||
+      storeIdentifier === auth.currentUser?.uid ||
+      storeIdentifier === 'default'
+    ) {
+      return {
+        products: storage.getProducts(),
+        settings: localSettings,
+        tenantId: auth.currentUser?.uid || 'default'
+      };
+    }
+
+    return { products: storage.getProducts(), settings: localSettings, tenantId };
   },
 
   getLocalKey: (key: string) => `pplus_${auth.currentUser?.uid}_${key}`,
@@ -226,12 +308,35 @@ export const storage = {
 
   getSettings: (): AppSettings => {
     const data = localStorage.getItem(storage.getLocalKey('settings'));
-    return data ? JSON.parse(data) : DEFAULT_SETTINGS;
+    if (data) {
+      try {
+        const parsed = JSON.parse(data);
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          slug: parsed.slug || slugify(parsed.businessName || DEFAULT_SETTINGS.businessName)
+        };
+      } catch (e) {}
+    }
+    return DEFAULT_SETTINGS;
   },
 
   saveSettings: (s: AppSettings) => {
-    localStorage.setItem(storage.getLocalKey('settings'), JSON.stringify(s));
-    syncToFirebase('settings', 'global', s);
+    const slug = s.slug ? slugify(s.slug) : slugify(s.businessName || DEFAULT_SETTINGS.businessName);
+    const updated = { ...s, slug };
+    localStorage.setItem(storage.getLocalKey('settings'), JSON.stringify(updated));
+    syncToFirebase('settings', 'global', updated);
+
+    // Save slug in global collection for easy reverse-lookup by slug
+    const user = auth.currentUser;
+    if (user && slug) {
+      setDoc(doc(db, 'slugs', slug), {
+        tenantId: user.uid,
+        slug: slug,
+        businessName: updated.businessName,
+        updatedAt: new Date().toISOString()
+      }).catch(() => {});
+    }
   },
 
   getProductCategories: (): string[] => {
@@ -477,5 +582,98 @@ export const storage = {
       if (m.type === 'IN') item.currentQuantity += m.quantity; else item.currentQuantity -= m.quantity;
       storage.saveStockItem(item);
     }
+  },
+
+  getReviews: (): CustomerReview[] => {
+    const key = storage.getLocalKey('reviews');
+    const data = localStorage.getItem(key);
+    if (data) {
+      try {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    // Seed initial reviews if none exist yet
+    localStorage.setItem(key, JSON.stringify(INITIAL_SEED_REVIEWS));
+    return INITIAL_SEED_REVIEWS;
+  },
+
+  saveReview: (rev: CustomerReview) => {
+    const revs = storage.getReviews();
+    const idx = revs.findIndex(r => r.id === rev.id);
+    if (idx >= 0) revs[idx] = rev; else revs.unshift(rev);
+    localStorage.setItem(storage.getLocalKey('reviews'), JSON.stringify(revs));
+    syncToFirebase('reviews', rev.id, rev);
+  },
+
+  updateReviewStatus: (id: string, status: 'PENDING' | 'APPROVED' | 'REJECTED') => {
+    const revs = storage.getReviews();
+    const target = revs.find(r => r.id === id);
+    if (target) {
+      target.status = status;
+      if (status === 'APPROVED') {
+        target.approvedAt = new Date().toISOString();
+      }
+      localStorage.setItem(storage.getLocalKey('reviews'), JSON.stringify(revs));
+      syncToFirebase('reviews', target.id, target);
+    }
+  },
+
+  deleteReview: (id: string) => {
+    const revs = storage.getReviews().filter(r => r.id !== id);
+    localStorage.setItem(storage.getLocalKey('reviews'), JSON.stringify(revs));
+    removeFromFirebase('reviews', id);
+  },
+
+  savePublicReview: async (tenantId: string, rev: CustomerReview) => {
+    try {
+      const path = `tenants/${tenantId}`;
+      await setDoc(doc(db, `${path}/reviews`, rev.id), rev);
+    } catch (e) {
+      console.error("Erro ao salvar avaliação pública:", e);
+    }
+    // Also save in local storage for fallback / offline
+    const localKey = `pplus_${tenantId}_reviews`;
+    const existing = localStorage.getItem(localKey);
+    let list: CustomerReview[] = existing ? JSON.parse(existing) : [];
+    const idx = list.findIndex(r => r.id === rev.id);
+    if (idx >= 0) list[idx] = rev; else list.unshift(rev);
+    localStorage.setItem(localKey, JSON.stringify(list));
+
+    // Also update current tenant's local reviews if current tenant is matching
+    if (tenantId === auth.currentUser?.uid || tenantId === 'default') {
+      const myRevs = storage.getReviews();
+      const myIdx = myRevs.findIndex(r => r.id === rev.id);
+      if (myIdx >= 0) myRevs[myIdx] = rev; else myRevs.unshift(rev);
+      localStorage.setItem(storage.getLocalKey('reviews'), JSON.stringify(myRevs));
+    }
+  },
+
+  getPublicReviews: async (tenantId?: string): Promise<CustomerReview[]> => {
+    if (!tenantId || tenantId === 'default' || tenantId === auth.currentUser?.uid) {
+      const all = storage.getReviews();
+      return all.filter(r => r.status === 'APPROVED');
+    }
+    try {
+      const path = `tenants/${tenantId}`;
+      const snap = await getDocs(collection(db, `${path}/reviews`));
+      const remote = snap.docs.map(d => d.data() as CustomerReview);
+      if (remote.length > 0) {
+        return remote.filter(r => r.status === 'APPROVED');
+      }
+    } catch (e) {}
+
+    const localKey = `pplus_${tenantId}_reviews`;
+    const local = localStorage.getItem(localKey);
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter((r: CustomerReview) => r.status === 'APPROVED');
+        }
+      } catch (e) {}
+    }
+
+    return INITIAL_SEED_REVIEWS.filter(r => r.status === 'APPROVED');
   }
 };
