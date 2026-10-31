@@ -64,6 +64,7 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
   const [hasTheme, setHasTheme] = useState(false);
   const [productionTime, setProductionTime] = useState('');
   const [digitalFileUrl, setDigitalFileUrl] = useState('');
+  const [isDigitalProduct, setIsDigitalProduct] = useState(false);
 
   const kidsSizes = ['2', '4', '6', '8', '10', '12', '14', '16'];
   const adultSizes = ['PP', 'P', 'M', 'G', 'GG', 'G1', 'G2', 'G3'];
@@ -99,6 +100,7 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
     setHasTheme(false);
     setProductionTime('');
     setDigitalFileUrl('');
+    setIsDigitalProduct(false);
     setIsAdding(false); 
     setEditingId(null);
   };
@@ -203,6 +205,7 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
     setHasTheme(!!p.hasTheme || !!p.hasSize);
     setProductionTime(p.productionTime || '');
     setDigitalFileUrl(p.digitalFileUrl || '');
+    setIsDigitalProduct(!!p.digitalFileUrl || (p.category || '').toLowerCase().includes('digital'));
     setEditingId(p.id); 
     setIsAdding(true);
   };
@@ -338,7 +341,11 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
                   if (e.target.value === '__NEW__') {
                     handleAddNewCategoryPrompt();
                   } else {
-                    setCategory(e.target.value);
+                    const selectedCat = e.target.value;
+                    setCategory(selectedCat);
+                    if (selectedCat.toLowerCase().includes('digital')) {
+                      setIsDigitalProduct(true);
+                    }
                   }
                 }} 
                 className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-sm"
@@ -362,26 +369,98 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
               </select>
             </div>
 
-            {category.trim().toLowerCase().includes('digital') && (
-              <div className="md:col-span-4 bg-sky-50 border border-sky-200 p-4 rounded-2xl space-y-2 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-black text-sky-800 uppercase tracking-widest flex items-center gap-1.5">
-                    <Download className="w-3.5 h-3.5 text-sky-600" /> Link do Arquivo Digital (Download) - Opcional
-                  </label>
-                  <span className="text-[10px] font-bold text-sky-600 bg-white/80 px-2 py-0.5 rounded-full border border-sky-200">
-                    Envio automático no WhatsApp
-                  </span>
+            {/* Quick Digital Product Bar */}
+            <div className="md:col-span-4 bg-gradient-to-r from-sky-50 via-indigo-50/40 to-slate-50 border border-sky-200 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl transition-all ${isDigitalProduct || category.trim().toLowerCase().includes('digital') || !!digitalFileUrl ? 'bg-sky-600 text-white shadow-md shadow-sky-200' : 'bg-slate-200 text-slate-500'}`}>
+                  <Download className="w-4 h-4" />
                 </div>
-                <input 
-                  type="url" 
-                  value={digitalFileUrl} 
-                  onChange={(e) => setDigitalFileUrl(e.target.value)} 
-                  placeholder="https://drive.google.com/... ou link direto do arquivo para download" 
-                  className="w-full p-3 bg-white border border-sky-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-sky-500 font-medium text-slate-800" 
-                />
-                <p className="text-[11px] text-sky-700">
-                  💡 <strong>Como funciona:</strong> Ao marcar o pedido como <strong>"Entrega"</strong>, o cliente receberá automaticamente o link de download direto no WhatsApp dele!
-                </p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Produto Digital (Download)</span>
+                    {(isDigitalProduct || category.trim().toLowerCase().includes('digital') || !!digitalFileUrl) && (
+                      <span className="px-2 py-0.5 bg-sky-100 text-sky-700 text-[9px] font-black rounded-full uppercase">Opção Ativa</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {isDigitalProduct || category.trim().toLowerCase().includes('digital') || !!digitalFileUrl
+                      ? 'Adicione o link do arquivo abaixo para envio automático ao cliente no WhatsApp.'
+                      : 'Marque caso este produto seja um arquivo digital para envio ao cliente.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !(isDigitalProduct || category.trim().toLowerCase().includes('digital') || !!digitalFileUrl);
+                    setIsDigitalProduct(next);
+                    if (next && !category.toLowerCase().includes('digital')) {
+                      setCategory('Produto Digital');
+                    }
+                  }}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isDigitalProduct || category.trim().toLowerCase().includes('digital') || !!digitalFileUrl
+                      ? 'bg-sky-600 text-white shadow-sm hover:bg-sky-700'
+                      : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 shadow-xs'
+                  }`}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  {isDigitalProduct || category.trim().toLowerCase().includes('digital') || !!digitalFileUrl
+                    ? '✓ Produto Digital Ativado'
+                    : '+ Adicionar Link de Download'}
+                </button>
+              </div>
+            </div>
+
+            {(isDigitalProduct || category.trim().toLowerCase().includes('digital') || !!digitalFileUrl) && (
+              <div className="md:col-span-4 bg-sky-50/90 border-2 border-sky-300 p-4 lg:p-5 rounded-2xl space-y-3 animate-in fade-in zoom-in-95 duration-200 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="text-[11px] font-black text-sky-900 uppercase tracking-widest flex items-center gap-1.5">
+                    <Download className="w-4 h-4 text-sky-600" /> Link do Arquivo Digital (Download) - Opcional
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {digitalFileUrl && (
+                      <a
+                        href={digitalFileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-sky-200 shadow-xs"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Testar Link
+                      </a>
+                    )}
+                    <span className="text-[10px] font-bold text-sky-700 bg-sky-100 px-2.5 py-0.5 rounded-full border border-sky-200">
+                      Envio no WhatsApp na Entrega
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <input 
+                    type="url" 
+                    value={digitalFileUrl} 
+                    onChange={(e) => setDigitalFileUrl(e.target.value)} 
+                    placeholder="Ex: https://drive.google.com/... ou https://dropbox.com/... ou link direto do arquivo" 
+                    className="w-full p-3.5 bg-white border border-sky-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-sky-500 font-medium text-slate-800 shadow-xs" 
+                  />
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-sky-800 gap-2 pt-1">
+                    <p>
+                      💡 <strong>Como funciona:</strong> Ao marcar o pedido como <strong>"Entrega"</strong> no sistema, o cliente receberá uma mensagem personalizada no WhatsApp com este link para download direto!
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDigitalFileUrl('');
+                        setIsDigitalProduct(false);
+                      }}
+                      className="text-[10px] text-sky-600 hover:text-red-500 font-bold shrink-0 self-end sm:self-auto"
+                    >
+                      Remover link
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
             
@@ -424,6 +503,23 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
                     <label className="text-xs font-bold text-slate-700">Solicitar Tema/Arte</label>
                   </div>
                   <input type="text" value={productionTime} onChange={e => setProductionTime(e.target.value)} placeholder="Prazo (Ex: 3 dias)" className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs" />
+                </div>
+                <div className="flex-1 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      checked={isDigitalProduct || category.trim().toLowerCase().includes('digital') || !!digitalFileUrl} 
+                      onChange={e => {
+                        setIsDigitalProduct(e.target.checked);
+                        if (e.target.checked && !category.toLowerCase().includes('digital')) {
+                          setCategory('Produto Digital');
+                        }
+                      }} 
+                      className="w-5 h-5 accent-sky-600"
+                    />
+                    <label className="text-xs font-bold text-slate-700">Produto Digital (Link de Download)</label>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Habilita o envio do link do arquivo no WhatsApp</p>
                 </div>
               </div>
             </div>

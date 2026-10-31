@@ -26,7 +26,8 @@ import {
   Banknote,
   AlertCircle,
   ChevronRight,
-  FileBadge
+  FileBadge,
+  Download
 } from 'lucide-react';
 import { Product, PricingMode, QuotationItem, Quotation, Coupon, ShippingOption, Customer } from '../types';
 import { storage } from '../services/storageService';
@@ -73,12 +74,21 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
   const [quantity, setQuantity] = useState<number>(1);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedTheme, setSelectedTheme] = useState('');
+  const [digitalFileUrl, setDigitalFileUrl] = useState('');
 
   const settings = storage.getSettings();
 
   useEffect(() => {
     setCustomers(storage.getCustomers());
   }, []);
+
+  useEffect(() => {
+    if (selectedProduct) {
+      setDigitalFileUrl(selectedProduct.digitalFileUrl || '');
+    } else {
+      setDigitalFileUrl('');
+    }
+  }, [selectedProduct]);
 
   const MP_RATES = {
     DEBIT: 0.0199,
@@ -166,7 +176,8 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
         total: price,
         isAdHoc: true,
         selectedSize,
-        selectedTheme
+        selectedTheme,
+        digitalFileUrl: digitalFileUrl.trim() || undefined
       }]);
     } else {
       if (!selectedProduct) {
@@ -199,7 +210,7 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
         selectedSize,
         selectedTheme,
         productionTime: selectedProduct.productionTime,
-        digitalFileUrl: selectedProduct.digitalFileUrl
+        digitalFileUrl: digitalFileUrl.trim() || selectedProduct.digitalFileUrl || undefined
       }]);
     }
     setSelectedProduct(null);
@@ -208,6 +219,7 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
     setQuantity(1);
     setSelectedSize('');
     setSelectedTheme('');
+    setDigitalFileUrl('');
   };
 
   const applyCoupon = () => {
@@ -553,6 +565,28 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
               </div>
             )}
 
+            {/* Campo Opcional de Link do Arquivo Digital */}
+            <div className="md:col-span-4 bg-sky-50/70 border border-sky-200 rounded-2xl p-4 space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <label className="text-[10px] font-black text-sky-900 uppercase tracking-widest flex items-center gap-1.5">
+                  <Download className="w-3.5 h-3.5 text-sky-600" /> Link do Arquivo Digital (Download) - Opcional
+                </label>
+                <span className="text-[9px] font-bold text-sky-700 bg-sky-100/90 px-2 py-0.5 rounded-full self-start sm:self-auto border border-sky-200">
+                  Enviado no WhatsApp ao marcar "Entrega"
+                </span>
+              </div>
+              <input 
+                type="url" 
+                value={digitalFileUrl} 
+                onChange={e => setDigitalFileUrl(e.target.value)} 
+                placeholder="Ex: https://drive.google.com/... ou link do arquivo para download" 
+                className="w-full p-3.5 bg-white border border-sky-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-sky-500 font-medium text-slate-800" 
+              />
+              <p className="text-[11px] text-sky-800">
+                💡 Caso informado, o cliente receberá automaticamente o link de download direto no WhatsApp quando o pedido for entregue.
+              </p>
+            </div>
+
             <button onClick={addItem} className="md:col-span-4 py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 active:scale-95">
               <Plus className="w-6 h-6"/> ADICIONAR AO CARRINHO
             </button>
@@ -590,6 +624,11 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
                             Tiragem Mínima
                           </span>
                         )}
+                        {item.digitalFileUrl && (
+                          <span className="px-2 py-0.5 bg-sky-100 text-sky-800 border border-sky-200 text-[9px] font-black uppercase rounded-md flex items-center gap-1">
+                            <Download className="w-2.5 h-2.5 text-sky-600" /> Digital
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 font-bold mt-1.5">
                         {isItemM2 && (
@@ -602,6 +641,11 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
                         <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.unitPrice)}{isItemM2 ? '/m²' : '/un'}</span>
                         {item.selectedSize ? <span className="bg-slate-100 px-2 py-0.5 rounded-md">Tam: {item.selectedSize}</span> : null}
                         {item.selectedTheme ? <span className="bg-slate-100 px-2 py-0.5 rounded-md">Tema: {item.selectedTheme}</span> : null}
+                        {item.digitalFileUrl && (
+                          <span className="bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-md font-mono text-[9px] truncate max-w-xs" title={item.digitalFileUrl}>
+                            🔗 {item.digitalFileUrl}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-4 ml-4">

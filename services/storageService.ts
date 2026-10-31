@@ -53,6 +53,7 @@ export const INITIAL_SEED_REVIEWS: CustomerReview[] = [
 ];
 
 export const DEFAULT_PRODUCT_CATEGORIES: string[] = [
+  'Produto Digital',
   'Banners & Lonas',
   'Adesivos & Rótulos',
   'Placas & Sinalização',
@@ -62,7 +63,6 @@ export const DEFAULT_PRODUCT_CATEGORIES: string[] = [
   'Impressão Digital',
   'Cartões de Visita',
   'Panfletos & Folders',
-  'Produto Digital',
   'Geral'
 ];
 
@@ -455,9 +455,10 @@ export const storage = {
 
     const combined = Array.from(
       new Set([
+        'Produto Digital',
+        ...DEFAULT_PRODUCT_CATEGORIES,
         ...savedCats,
-        ...productCategories,
-        ...(savedCats.length === 0 && productCategories.length === 0 ? DEFAULT_PRODUCT_CATEGORIES : [])
+        ...productCategories
       ])
     ).filter(c => c && c.trim().length > 0);
 
