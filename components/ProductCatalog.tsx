@@ -151,18 +151,41 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
   };
 
   const handleSave = () => {
-    if (!name || price <= 0) return;
-    const isDigital = category.trim().toLowerCase() === 'produto digital' || category.trim().toLowerCase().includes('digital');
-    const product: Product = {
-      id: editingId || Math.random().toString(36).substr(2, 9),
-      name, description, price, productionCost, mode, 
-      category: category || 'Geral', imageUrl, isHighlighted, hiddenInStore,
-      hasSize, availableSizes, hasTheme: hasSize || hasTheme, productionTime,
-      digitalFileUrl: digitalFileUrl.trim() || undefined
-    };
-    storage.saveProduct(product);
-    onUpdate();
-    resetForm();
+    if (!name.trim()) {
+      alert('Por favor, informe o Nome do Produto.');
+      return;
+    }
+    if (isNaN(price) || price <= 0) {
+      alert('Por favor, informe um Preço de Venda válido (maior que zero).');
+      return;
+    }
+
+    try {
+      const product: Product = {
+        id: editingId || Math.random().toString(36).substr(2, 9),
+        name: name.trim(), 
+        description: description.trim(), 
+        price: Number(price), 
+        productionCost: Number(productionCost) || 0, 
+        mode, 
+        category: category || 'Geral', 
+        imageUrl: imageUrl.trim(), 
+        isHighlighted, 
+        hiddenInStore,
+        hasSize, 
+        availableSizes, 
+        hasTheme: hasSize || hasTheme, 
+        productionTime: productionTime.trim(),
+        digitalFileUrl: digitalFileUrl.trim() || undefined
+      };
+      storage.saveProduct(product);
+      onUpdate();
+      resetForm();
+      alert('✅ Produto salvo com sucesso!');
+    } catch (e: any) {
+      console.error("Erro ao salvar produto:", e);
+      alert('Erro ao salvar produto: ' + (e?.message || 'Tente novamente.'));
+    }
   };
 
   const handleEdit = (p: Product) => {

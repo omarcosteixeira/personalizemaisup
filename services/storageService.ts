@@ -120,13 +120,29 @@ const getTenantPath = () => {
   return `tenants/${user.uid}`;
 };
 
+const sanitizeForFirestore = (obj: any): any => {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeForFirestore);
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      clean[key] = sanitizeForFirestore(value);
+    }
+  }
+  return clean;
+};
+
 const syncToFirebase = async (col: string, id: string, data: any) => {
   try {
     const path = getTenantPath();
-    await setDoc(doc(db, `${path}/${col}`, id), data);
+    const cleanData = sanitizeForFirestore(data);
+    await setDoc(doc(db, `${path}/${col}`, id), cleanData);
   } catch (e: any) { 
     if (e.code !== 'permission-denied' && !e.message?.includes('Missing or insufficient permissions')) {
-      console.error(e); 
+      console.error(`Erro ao sincronizar ${col}/${id} no Firebase:`, e); 
     }
   }
 };
@@ -163,8 +179,40 @@ export const storage = {
     const syncTasks = collections.map(async (col) => {
       try {
         const snap = await getDocs(collection(db, `${path}/${col.fb}`));
-        const data = snap.docs.map(d => d.data());
-        localStorage.setItem(`pplus_${user.uid}_${col.k}`, JSON.stringify(data));
+        const remoteData = snap.docs.map(d => d.data());
+        
+        const localKey = `pplus_${user.uid}_${col.k}`;
+        const localRaw = localStorage.getItem(localKey);
+        let localData: any[] = [];
+        try { localData = localRaw ? JSON.parse(localRaw) : []; } catch (e) {}
+
+        const mergedMap = new Map<string, any>();
+        if (Array.isArray(localData)) {
+          localData.forEach(item => {
+            if (item && item.id) mergedMap.set(item.id, item);
+          });
+        }
+        if (Array.isArray(remoteData)) {
+          remoteData.forEach(item => {
+            if (item && item.id) mergedMap.set(item.id, item);
+          });
+        }
+        const finalData = Array.from(mergedMap.values());
+        localStorage.setItem(localKey, JSON.stringify(finalData));
+
+        if (col.k === 'reviews') {
+          localStorage.setItem(`pplus_${user.uid}_reviews_initialized`, 'true');
+        }
+
+        // Se haviam itens locais ainda não gravados no Firestore, sobe para a nuvem
+        if (Array.isArray(localData)) {
+          const remoteIds = new Set(remoteData.map(d => d.id));
+          for (const item of localData) {
+            if (item && item.id && !remoteIds.has(item.id)) {
+              syncToFirebase(col.fb, item.id, item);
+            }
+          }
+        }
       } catch (err: any) {
         if (err.code !== 'permission-denied' && !err.message?.includes('Missing or insufficient permissions')) {
           console.error(`Erro ao sincronizar coleção ${col.k}:`, err);
@@ -267,19 +315,45 @@ export const storage = {
     return { products: storage.getProducts(), settings: localSettings, tenantId };
   },
 
-  getLocalKey: (key: string) => `pplus_${auth.currentUser?.uid}_${key}`,
+  getLocalKey: (key: string) => {
+    let uid = auth.currentUser?.uid;
+    if (uid) {
+      try { localStorage.setItem('pplus_active_uid', uid); } catch (e) {}
+    } else {
+      try { uid = localStorage.getItem('pplus_active_uid') || undefined; } catch (e) {}
+    }
+    return `pplus_${uid || 'default'}_${key}`;
+  },
 
   getProducts: (): Product[] => {
-    const data = localStorage.getItem(storage.getLocalKey('products'));
+    const mainKey = storage.getLocalKey('products');
+    let data = localStorage.getItem(mainKey);
+    if (!data) {
+      const fallback = localStorage.getItem('pplus_undefined_products') || localStorage.getItem('pplus_default_products') || localStorage.getItem('products');
+      if (fallback) {
+        try {
+          const parsed = JSON.parse(fallback);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            localStorage.setItem(mainKey, fallback);
+            data = fallback;
+          }
+        } catch (e) {}
+      }
+    }
     return data ? JSON.parse(data) : [];
   },
 
   saveProduct: (product: Product) => {
-    const products = storage.getProducts();
-    const idx = products.findIndex(p => p.id === product.id);
-    if (idx >= 0) products[idx] = product; else products.push(product);
-    localStorage.setItem(storage.getLocalKey('products'), JSON.stringify(products));
-    syncToFirebase('products', product.id, product);
+    try {
+      const products = storage.getProducts();
+      const idx = products.findIndex(p => p.id === product.id);
+      if (idx >= 0) products[idx] = product; else products.push(product);
+      localStorage.setItem(storage.getLocalKey('products'), JSON.stringify(products));
+      syncToFirebase('products', product.id, product);
+    } catch (e) {
+      console.error("Erro ao salvar produto no storage:", e);
+      throw e;
+    }
   },
 
   deleteProduct: (id: string) => {
@@ -289,16 +363,34 @@ export const storage = {
   },
 
   getQuotations: (): Quotation[] => {
-    const data = localStorage.getItem(storage.getLocalKey('quotations'));
+    const mainKey = storage.getLocalKey('quotations');
+    let data = localStorage.getItem(mainKey);
+    if (!data) {
+      const fallback = localStorage.getItem('pplus_undefined_quotations') || localStorage.getItem('pplus_default_quotations') || localStorage.getItem('quotations');
+      if (fallback) {
+        try {
+          const parsed = JSON.parse(fallback);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            localStorage.setItem(mainKey, fallback);
+            data = fallback;
+          }
+        } catch (e) {}
+      }
+    }
     return data ? JSON.parse(data) : [];
   },
 
   saveQuotation: (q: Quotation) => {
-    const qs = storage.getQuotations();
-    const idx = qs.findIndex(item => item.id === q.id);
-    if (idx >= 0) qs[idx] = q; else qs.unshift(q);
-    localStorage.setItem(storage.getLocalKey('quotations'), JSON.stringify(qs));
-    syncToFirebase('quotations', q.id, q);
+    try {
+      const qs = storage.getQuotations();
+      const idx = qs.findIndex(item => item.id === q.id);
+      if (idx >= 0) qs[idx] = q; else qs.unshift(q);
+      localStorage.setItem(storage.getLocalKey('quotations'), JSON.stringify(qs));
+      syncToFirebase('quotations', q.id, q);
+    } catch (e) {
+      console.error("Erro ao salvar pedido no storage:", e);
+      throw e;
+    }
   },
 
   deleteQuotation: (id: string) => {

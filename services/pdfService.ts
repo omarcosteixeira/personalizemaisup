@@ -27,15 +27,15 @@ export const pdfService = {
     
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`Nº: ${quotation.id}`, 14, settings.logoUrl ? 58 : 30);
-    doc.text(`Data: ${new Date(quotation.createdAt).toLocaleDateString()}`, 14, settings.logoUrl ? 63 : 35);
+    doc.text(`Nº: ${quotation.id || '-'}`, 14, settings.logoUrl ? 58 : 30);
+    doc.text(`Data: ${new Date(quotation.createdAt || Date.now()).toLocaleDateString()}`, 14, settings.logoUrl ? 63 : 35);
 
     // Business Info from Settings
     doc.setFontSize(10);
     doc.setTextColor(30, 41, 59);
-    doc.text(settings.businessName, pageWidth - 14, 22, { align: 'right' });
-    doc.text(settings.address, pageWidth - 14, 27, { align: 'right' });
-    doc.text(`${settings.phone} | ${settings.email}`, pageWidth - 14, 32, { align: 'right' });
+    doc.text(String(settings.businessName || 'Ateliê Ariane Artes'), pageWidth - 14, 22, { align: 'right' });
+    doc.text(String(settings.address || ''), pageWidth - 14, 27, { align: 'right' });
+    doc.text(`${settings.phone || ''} | ${settings.email || ''}`, pageWidth - 14, 32, { align: 'right' });
 
     // Client Info
     const clientY = settings.logoUrl ? 75 : 45;
@@ -46,12 +46,12 @@ export const pdfService = {
     doc.setFont('helvetica', 'bold');
     doc.text('CLIENTE:', 14, clientY + 10);
     doc.setFont('helvetica', 'normal');
-    doc.text(quotation.customerName.toUpperCase(), 40, clientY + 10);
+    doc.text(String(quotation.customerName || 'Cliente').toUpperCase(), 40, clientY + 10);
     
     doc.setFont('helvetica', 'bold');
     doc.text('CONTATO:', 14, clientY + 17);
     doc.setFont('helvetica', 'normal');
-    doc.text(quotation.customerContact, 40, clientY + 17);
+    doc.text(String(quotation.customerContact || '-'), 40, clientY + 17);
 
     // Items Table
     const tableData = quotation.items.map((item, index) => {
@@ -156,10 +156,10 @@ export const pdfService = {
     doc.setFontSize(7);
     doc.setTextColor(180);
     const socials = [];
-    if (settings.socialLinks.instagram) socials.push(`Instagram: ${settings.socialLinks.instagram}`);
-    if (settings.socialLinks.facebook) socials.push(`Facebook: ${settings.socialLinks.facebook}`);
-    if (settings.socialLinks.website) socials.push(`Site: ${settings.socialLinks.website}`);
-    if (settings.socialLinks.tiktokShop) socials.push(`TikTok: ${settings.socialLinks.tiktokShop}`);
+    if (settings.socialLinks?.instagram) socials.push(`Instagram: ${settings.socialLinks.instagram}`);
+    if (settings.socialLinks?.facebook) socials.push(`Facebook: ${settings.socialLinks.facebook}`);
+    if (settings.socialLinks?.website) socials.push(`Site: ${settings.socialLinks.website}`);
+    if (settings.socialLinks?.tiktokShop) socials.push(`TikTok: ${settings.socialLinks.tiktokShop}`);
     
     const socialStr = socials.join(' | ');
     doc.text(socialStr, pageWidth / 2, socialY, { align: 'center' });

@@ -243,23 +243,65 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
   };
 
   const handleSaveAsBudget = () => {
-    if (!customerName || items.length === 0) return;
-    const quotation = createQuotationObject('PENDING');
-    storage.saveQuotation(quotation);
-    pdfService.generateQuotation(quotation).save(`${quotation.id}.pdf`);
-    onSave();
+    if (!customerName.trim()) {
+      alert("Por favor, preencha o Nome do Cliente antes de salvar.");
+      return;
+    }
+    if (items.length === 0) {
+      alert("Adicione pelo menos um produto ou item ao orçamento.");
+      return;
+    }
+    try {
+      const quotation = createQuotationObject('PENDING');
+      storage.saveQuotation(quotation);
+      try {
+        pdfService.generateQuotation(quotation).save(`${quotation.id}.pdf`);
+      } catch (pdfErr) {
+        console.warn("PDF não pôde ser baixado automaticamente:", pdfErr);
+      }
+      onSave();
+      alert(`✅ Orçamento #${quotation.id} salvo com sucesso!`);
+    } catch (err: any) {
+      console.error("Erro ao salvar orçamento:", err);
+      alert("Erro ao salvar orçamento: " + (err?.message || "Tente novamente"));
+    }
   };
 
   const handleSaveAsOrder = () => {
-    if (!customerName || items.length === 0) return;
-    const quotation = createQuotationObject('AWAITING_PAYMENT');
-    storage.saveQuotation(quotation);
-    pdfService.generateQuotation(quotation).save(`${quotation.id}.pdf`);
-    onSave(); if (onNavigateToHistory) onNavigateToHistory();
+    if (!customerName.trim()) {
+      alert("Por favor, preencha o Nome do Cliente antes de salvar.");
+      return;
+    }
+    if (items.length === 0) {
+      alert("Adicione pelo menos um produto ou item ao pedido.");
+      return;
+    }
+    try {
+      const quotation = createQuotationObject('AWAITING_PAYMENT');
+      storage.saveQuotation(quotation);
+      try {
+        pdfService.generateQuotation(quotation).save(`${quotation.id}.pdf`);
+      } catch (pdfErr) {
+        console.warn("PDF não pôde ser baixado automaticamente:", pdfErr);
+      }
+      onSave();
+      if (onNavigateToHistory) onNavigateToHistory();
+      alert(`✅ Pedido #${quotation.id} criado e salvo com sucesso!`);
+    } catch (err: any) {
+      console.error("Erro ao salvar pedido:", err);
+      alert("Erro ao salvar pedido: " + (err?.message || "Tente novamente"));
+    }
   };
 
   const handleOpenWhatsappModal = () => {
-    if (!customerName || items.length === 0) return;
+    if (!customerName.trim()) {
+      alert("Por favor, preencha o Nome do Cliente.");
+      return;
+    }
+    if (items.length === 0) {
+      alert("Adicione pelo menos um produto ao pedido.");
+      return;
+    }
     const quotation = createQuotationObject('PENDING');
     setPendingQuotation(quotation);
     setCustomMessage(settings.waMessages.quotation.replace(/{cliente}/g, quotation.customerName).replace(/{total}/g, new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(quotation.total)));
@@ -268,14 +310,27 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
 
   const finalizeSaveWA = (sendWa: boolean) => {
     if (!pendingQuotation) return;
-    storage.saveQuotation({ ...pendingQuotation, customMessage: sendWa ? customMessage : undefined });
-    pdfService.generateQuotation(pendingQuotation).save(`${pendingQuotation.id}.pdf`);
-    if (sendWa) {
-      const p = customerContact.replace(/\D/g, '');
-      const finalPhone = p.startsWith('55') ? p : `55${p}`;
-      window.open(`https://api.whatsapp.com/send?phone=${finalPhone}&text=${encodeURIComponent(customMessage)}`, '_blank');
+    try {
+      const q = { ...pendingQuotation, customMessage: sendWa ? customMessage : undefined };
+      storage.saveQuotation(q);
+      try {
+        pdfService.generateQuotation(pendingQuotation).save(`${pendingQuotation.id}.pdf`);
+      } catch (pdfErr) {
+        console.warn("PDF não baixado:", pdfErr);
+      }
+      if (sendWa) {
+        const p = customerContact.replace(/\D/g, '');
+        const finalPhone = p.startsWith('55') ? p : `55${p}`;
+        window.open(`https://api.whatsapp.com/send?phone=${finalPhone}&text=${encodeURIComponent(customMessage)}`, '_blank');
+      }
+      onSave(); 
+      setShowWhatsappModal(false); 
+      setPendingQuotation(null);
+      alert("✅ Salvo com sucesso!");
+    } catch (err: any) {
+      console.error("Erro ao salvar:", err);
+      alert("Erro ao salvar: " + (err?.message || "Tente novamente"));
     }
-    onSave(); setShowWhatsappModal(false); setPendingQuotation(null);
   };
 
   return (

@@ -145,11 +145,9 @@ const App: React.FC = () => {
   }, []);
 
   const refreshData = () => {
-    if (userStatus === 'APPROVED') {
-      setProducts(storage.getProducts());
-      setQuotations(storage.getQuotations());
-      setStock(storage.getStock());
-    }
+    setProducts(storage.getProducts());
+    setQuotations(storage.getQuotations());
+    setStock(storage.getStock());
   };
 
   const handleLogout = () => {
