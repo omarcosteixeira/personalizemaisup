@@ -198,7 +198,8 @@ const NewQuotation: React.FC<Props> = ({ products, initialData, isEditing, onSav
         total: price,
         selectedSize,
         selectedTheme,
-        productionTime: selectedProduct.productionTime
+        productionTime: selectedProduct.productionTime,
+        digitalFileUrl: selectedProduct.digitalFileUrl
       }]);
     }
     setSelectedProduct(null);

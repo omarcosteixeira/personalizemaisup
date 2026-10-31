@@ -43,6 +43,7 @@ export interface Product {
   availableSizes?: string[];
   hasTheme?: boolean;
   productionTime?: string;
+  digitalFileUrl?: string;
 }
 
 export interface QuotationItem {
@@ -60,6 +61,7 @@ export interface QuotationItem {
   selectedSize?: string;
   selectedTheme?: string;
   productionTime?: string;
+  digitalFileUrl?: string;
 }
 
 export interface ShippingOption {

@@ -62,6 +62,7 @@ export const DEFAULT_PRODUCT_CATEGORIES: string[] = [
   'Impressão Digital',
   'Cartões de Visita',
   'Panfletos & Folders',
+  'Produto Digital',
   'Geral'
 ];
 

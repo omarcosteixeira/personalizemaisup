@@ -281,7 +281,8 @@ const Storefront: React.FC<Props> = ({ products, settings: propSettings, tenantI
         areaM2: c.areaM2,
         quantity: c.quantity,
         unitPrice: c.product.price,
-        total: c.totalPrice !== undefined ? c.totalPrice : (c.product.price * c.quantity)
+        total: c.totalPrice !== undefined ? c.totalPrice : (c.product.price * c.quantity),
+        digitalFileUrl: c.product.digitalFileUrl
       })),
       subtotal: cartTotal,
       discountValue: 0,

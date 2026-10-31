@@ -187,6 +187,27 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
     }
   };
 
+  const getDigitalLinksForOrder = (q: Quotation) => {
+    const catalogProducts = storage.getProducts();
+    const links: { name: string; url: string }[] = [];
+    (q.items || []).forEach(item => {
+      let url = item.digitalFileUrl;
+      if (!url) {
+        const prod = catalogProducts.find(p => p.id === item.productId || p.name.trim().toLowerCase() === item.productName.trim().toLowerCase());
+        if (prod && prod.digitalFileUrl) {
+          url = prod.digitalFileUrl;
+        }
+      }
+      if (url && url.trim()) {
+        links.push({
+          name: item.productName,
+          url: url.trim()
+        });
+      }
+    });
+    return links;
+  };
+
   const updateStatus = async (q: Quotation, newStatus: OrderStatus) => {
     const updated = { ...q, status: newStatus };
     storage.saveQuotation(updated);
@@ -194,7 +215,92 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
     
     // Auto notify on status change if webhook is active
     if (settings.webhookUrl && settings.webhookSecret && settings.botEnabled) {
-      await sendWebhookMessage(updated);
+      await sendWebhookMessage(updated, newStatus);
+    }
+
+    // Se o pedido foi marcado como "Entrega" (DELIVERED) e contém produtos digitais com link para download
+    if (newStatus === 'DELIVERED') {
+      const digitalLinks = getDigitalLinksForOrder(q);
+      if (digitalLinks.length > 0) {
+        const customerName = q.customerName?.trim() || 'Cliente';
+        const businessName = settings.businessName || 'Ateliê Ariane Artes';
+        
+        let digitalMsg = `Olá ${customerName}! O seu pedido *#${q.id}* foi concluído e marcado como entregue pela ${businessName}! 🎉\n\n`;
+        digitalMsg += `📥 *Link(s) para Download do seu Produto Digital:*\n`;
+        digitalLinks.forEach(dl => {
+          digitalMsg += `👉 *${dl.name}:*\n${dl.url}\n\n`;
+        });
+        digitalMsg += `Muito obrigado por apoiar o nosso trabalho! Qualquer dúvida estamos à disposição. 💙`;
+
+        // Se o bot estiver configurado, envia automaticamente via bot
+        if (settings.webhookUrl && settings.webhookSecret && settings.botEnabled) {
+          try {
+            const cleanPhone = q.customerContact.replace(/\D/g, '');
+            await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/enviar-mensagem`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                idSessao: settings.botSessionId || 'vendas',
+                telefone: cleanPhone,
+                mensagem: digitalMsg,
+                senha: settings.webhookSecret
+              })
+            });
+          } catch (e) {
+            console.error("Erro ao enviar link digital via bot:", e);
+          }
+        }
+
+        // Abre também o WhatsApp para entrega direta e imediata do arquivo
+        const cleanPhone = q.customerContact.replace(/\D/g, '');
+        const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+        window.open(`https://api.whatsapp.com/send?phone=${finalPhone}&text=${encodeURIComponent(digitalMsg)}`, '_blank');
+      }
+    }
+  };
+
+  const handleSendEvaluationRequest = async (q: Quotation) => {
+    const customerName = q.customerName?.trim() || 'Cliente';
+    const storeName = settings.businessName || 'Ateliê Ariane Artes';
+    const storeSlug = settings.slug || 'ateliearianeartes';
+    
+    const origin = window.location.origin.includes('localhost') || window.location.origin.includes('webcontainer') || window.location.origin.includes('run.app')
+      ? 'https://personalizemais.vercel.app'
+      : window.location.origin;
+
+    const reviewLink = `${origin}/${storeSlug}?avaliar=${q.id}&cliente=${encodeURIComponent(customerName)}`;
+
+    const message = `Olá ${customerName}, O seu pedido do ${storeName} chegou? 📦✨ Conta pra gente o que achou da sua experiência! Deixe sua avaliação rapidinho aqui: \n👉   ${reviewLink}\n\nMuito obrigado por apoiar o nosso trabalho! 💙`;
+
+    let sentViaWebhook = false;
+    if (settings.webhookUrl && settings.webhookSecret && settings.botEnabled) {
+      try {
+        const cleanPhone = q.customerContact.replace(/\D/g, '');
+        const response = await fetch(`${settings.webhookUrl.replace(/\/$/, '')}/api/enviar-mensagem`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idSessao: settings.botSessionId || 'vendas',
+            telefone: cleanPhone,
+            mensagem: message,
+            senha: settings.webhookSecret
+          })
+        });
+        const res = await response.json();
+        if (res.sucesso) {
+          sentViaWebhook = true;
+        }
+      } catch (e) {
+        console.warn("Falha ao enviar pelo Bot:", e);
+      }
+    }
+
+    const cleanPhone = q.customerContact.replace(/\D/g, '');
+    const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+    window.open(`https://api.whatsapp.com/send?phone=${finalPhone}&text=${encodeURIComponent(message)}`, '_blank');
+
+    if (sentViaWebhook) {
+      alert(`✅ Solicitação de avaliação enviada com sucesso para ${customerName} via Bot!`);
     }
   };
 
@@ -275,6 +381,14 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
     if (paymentLink) {
        msg += `\n\n💳 *Link de Pagamento:*\n${paymentLink}`;
     }
+
+    // Se o pedido tiver produtos digitais com link de download, anexa no fim da mensagem
+    const digitalLinks = getDigitalLinksForOrder(quotation);
+    if (digitalLinks.length > 0) {
+      msg += `\n\n📥 *Download do Produto Digital:*\n` +
+        digitalLinks.map(d => `👉 *${d.name}:*\n${d.url}`).join('\n\n');
+    }
+
     return msg;
   };
 
@@ -382,6 +496,35 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
                       </a>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Arquivo Digital para Download */}
+              {getDigitalLinksForOrder(q).length > 0 && (
+                <div className="mb-4 bg-sky-50 border border-sky-200 rounded-xl p-2.5 text-xs text-sky-950 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold flex items-center gap-1.5 text-sky-900">
+                      <Download className="w-3.5 h-3.5 text-sky-600" /> Produto Digital:
+                    </span>
+                    <span className="text-[9px] font-black uppercase bg-sky-200/60 text-sky-800 px-2 py-0.5 rounded-full">
+                      Envio na Entrega
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {getDigitalLinksForOrder(q).map((dl, idx) => (
+                      <div key={idx} className="flex items-center justify-between gap-2 bg-white/80 p-1.5 rounded-lg border border-sky-100">
+                        <span className="truncate font-medium text-[11px] text-slate-700">{dl.name}</span>
+                        <a 
+                          href={dl.url} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="text-[10px] font-bold text-sky-600 hover:text-sky-800 underline shrink-0 flex items-center gap-1"
+                        >
+                          <Download className="w-2.5 h-2.5" /> Testar Link
+                        </a>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -507,13 +650,22 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
                 </div>
 
                 {/* Botão de Solicitar Avaliação de 0 a 5 Estrelas */}
-                <button
-                  onClick={() => setReviewModalQuotation(q)}
-                  className="w-full py-2.5 bg-amber-50 hover:bg-amber-100/90 text-amber-900 border border-amber-200 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm active:scale-98"
-                >
-                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-                  {reviews.some(r => r.orderId === q.id) ? 'Ver / Editar Avaliação' : 'Solicitar Avaliação (0 a 5★)'}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleSendEvaluationRequest(q)}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md shadow-amber-200/50 active:scale-98"
+                    title="Enviar solicitação de avaliação diretamente para o WhatsApp do cliente"
+                  >
+                    <Send className="w-3.5 h-3.5" /> Enviar Solicitação de Avaliação
+                  </button>
+                  <button
+                    onClick={() => setReviewModalQuotation(q)}
+                    className="p-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold transition-all"
+                    title={reviews.some(r => r.orderId === q.id) ? 'Ver / Editar Avaliação' : 'Abrir formulário de avaliação'}
+                  >
+                    <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+                  </button>
+                </div>
               </div>
             </div>
           );

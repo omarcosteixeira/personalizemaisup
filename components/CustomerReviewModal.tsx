@@ -71,8 +71,14 @@ const CustomerReviewModal: React.FC<Props> = ({
     if (onSubmitted) onSubmitted(review);
   };
 
+  const origin = window.location.origin.includes('localhost') || window.location.origin.includes('webcontainer') || window.location.origin.includes('run.app')
+    ? 'https://personalizemais.vercel.app'
+    : window.location.origin;
   const storeSlug = settings.slug || 'ateliearianeartes';
-  const evaluationLink = `${window.location.origin}/${storeSlug}?avaliar=${quotation?.id || 'pedido'}&cliente=${encodeURIComponent(customerName || 'Cliente')}`;
+  const storeName = settings.businessName || 'Ateliê Ariane Artes';
+  const clientNameStr = customerName || 'Cliente';
+  const orderIdStr = quotation?.id || 'PED-2249';
+  const evaluationLink = `${origin}/${storeSlug}?avaliar=${orderIdStr}&cliente=${encodeURIComponent(clientNameStr)}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(evaluationLink);
@@ -82,8 +88,9 @@ const CustomerReviewModal: React.FC<Props> = ({
 
   const handleSendWhatsApp = () => {
     const cleanPhone = customerPhone.replace(/\D/g, '');
-    const text = `Olá ${customerName || 'Cliente'}! Agradecemos pela preferência com a ${settings.businessName}. Poderia avaliar seu pedido com uma nota de 0 a 5 estrelas e um breve comentário? Clique aqui: ${evaluationLink}`;
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
+    const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+    const text = `Olá ${clientNameStr}, O seu pedido do ${storeName} chegou? 📦✨ Conta pra gente o que achou da sua experiência! Deixe sua avaliação rapidinho aqui: \n👉   ${evaluationLink}\n\nMuito obrigado por apoiar o nosso trabalho! 💙`;
+    window.open(`https://api.whatsapp.com/send?phone=${finalPhone}&text=${encodeURIComponent(text)}`, '_blank');
   };
 
   return (

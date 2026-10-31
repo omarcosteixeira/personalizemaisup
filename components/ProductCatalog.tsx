@@ -63,6 +63,7 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
   const [availableSizes, setAvailableSizes] = useState<string[]>([]);
   const [hasTheme, setHasTheme] = useState(false);
   const [productionTime, setProductionTime] = useState('');
+  const [digitalFileUrl, setDigitalFileUrl] = useState('');
 
   const kidsSizes = ['2', '4', '6', '8', '10', '12', '14', '16'];
   const adultSizes = ['PP', 'P', 'M', 'G', 'GG', 'G1', 'G2', 'G3'];
@@ -97,6 +98,7 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
     setAvailableSizes([]);
     setHasTheme(false);
     setProductionTime('');
+    setDigitalFileUrl('');
     setIsAdding(false); 
     setEditingId(null);
   };
@@ -150,11 +152,13 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
 
   const handleSave = () => {
     if (!name || price <= 0) return;
+    const isDigital = category.trim().toLowerCase() === 'produto digital' || category.trim().toLowerCase().includes('digital');
     const product: Product = {
       id: editingId || Math.random().toString(36).substr(2, 9),
       name, description, price, productionCost, mode, 
       category: category || 'Geral', imageUrl, isHighlighted, hiddenInStore,
-      hasSize, availableSizes, hasTheme: hasSize || hasTheme, productionTime
+      hasSize, availableSizes, hasTheme: hasSize || hasTheme, productionTime,
+      digitalFileUrl: digitalFileUrl.trim() || undefined
     };
     storage.saveProduct(product);
     onUpdate();
@@ -175,6 +179,7 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
     setAvailableSizes(p.availableSizes || []);
     setHasTheme(!!p.hasTheme || !!p.hasSize);
     setProductionTime(p.productionTime || '');
+    setDigitalFileUrl(p.digitalFileUrl || '');
     setEditingId(p.id); 
     setIsAdding(true);
   };
@@ -196,6 +201,7 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
       ModoCobranca: p.mode,
       Descricao: p.description || '',
       LinkImagem: p.imageUrl || '',
+      LinkArquivoDigital: p.digitalFileUrl || '',
       Destaque: p.isHighlighted ? 'Sim' : 'Não',
       OcultoLoja: p.hiddenInStore ? 'Sim' : 'Não',
       TemGrade: p.hasSize ? 'Sim' : 'Não',
@@ -235,6 +241,7 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
             mode: (item.ModoCobranca as PricingMode) || PricingMode.UNIT,
             description: item.Descricao || '',
             imageUrl: item.LinkImagem || '',
+            digitalFileUrl: item.LinkArquivoDigital || undefined,
             isHighlighted: item.Destaque === 'Sim',
             hiddenInStore: item.OcultoLoja === 'Sim',
             hasSize: item.TemGrade === 'Sim',
@@ -331,6 +338,29 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
                 <option value={PricingMode.MILHEIRO}>Milheiro</option>
               </select>
             </div>
+
+            {category.trim().toLowerCase().includes('digital') && (
+              <div className="md:col-span-4 bg-sky-50 border border-sky-200 p-4 rounded-2xl space-y-2 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black text-sky-800 uppercase tracking-widest flex items-center gap-1.5">
+                    <Download className="w-3.5 h-3.5 text-sky-600" /> Link do Arquivo Digital (Download) - Opcional
+                  </label>
+                  <span className="text-[10px] font-bold text-sky-600 bg-white/80 px-2 py-0.5 rounded-full border border-sky-200">
+                    Envio automático no WhatsApp
+                  </span>
+                </div>
+                <input 
+                  type="url" 
+                  value={digitalFileUrl} 
+                  onChange={(e) => setDigitalFileUrl(e.target.value)} 
+                  placeholder="https://drive.google.com/... ou link direto do arquivo para download" 
+                  className="w-full p-3 bg-white border border-sky-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-sky-500 font-medium text-slate-800" 
+                />
+                <p className="text-[11px] text-sky-700">
+                  💡 <strong>Como funciona:</strong> Ao marcar o pedido como <strong>"Entrega"</strong>, o cliente receberá automaticamente o link de download direto no WhatsApp dele!
+                </p>
+              </div>
+            )}
             
             <div className="md:col-span-4 space-y-2">
               <div className="flex justify-between items-center">
@@ -456,10 +486,15 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
                     <span className="text-[11px] font-black text-indigo-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.price)}</span>
                     <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${margin > 40 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>+{margin.toFixed(0)}%</span>
                   </div>
-                  <div className="flex gap-1 mt-1.5 items-center">
+                  <div className="flex gap-1 mt-1.5 items-center flex-wrap">
                     {p.isHighlighted && <Star className="w-3 h-3 text-yellow-400 fill-current" />}
                     {p.hiddenInStore && <EyeOff className="w-3 h-3 text-slate-300" />}
                     <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{p.category}</span>
+                    {p.digitalFileUrl && (
+                      <span className="text-[8px] font-bold bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded flex items-center gap-1 border border-sky-100">
+                        <Download className="w-2.5 h-2.5" /> Arquivo Digital
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -515,7 +550,14 @@ const ProductCatalog: React.FC<Props> = ({ products, onUpdate }) => {
                         {p.imageUrl ? <img src={p.imageUrl} className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-slate-200" />}
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-700">{p.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-slate-700">{p.name}</p>
+                          {p.digitalFileUrl && (
+                            <span className="text-[9px] font-bold bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded flex items-center gap-1 border border-sky-100" title={p.digitalFileUrl}>
+                              <Download className="w-2.5 h-2.5 text-sky-600" /> Digital
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[9px] text-slate-400 uppercase font-black">{p.category}</p>
                       </div>
                     </td>
