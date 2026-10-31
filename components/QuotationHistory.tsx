@@ -623,6 +623,18 @@ const QuotationHistory: React.FC<Props> = ({ quotations, onDuplicate, onEdit, on
                               <ThumbsDown className="w-2.5 h-2.5" /> Rejeitar
                             </button>
                           )}
+                          <button
+                            onClick={() => {
+                              if (window.confirm('Excluir esta avaliação permanentemente?')) {
+                                storage.deleteReview(orderReview.id);
+                                setReviews(storage.getReviews());
+                              }
+                            }}
+                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-1"
+                            title="Excluir Avaliação"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
                       </div>
                       {orderReview.message && (

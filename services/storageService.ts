@@ -587,14 +587,20 @@ export const storage = {
 
   getReviews: (): CustomerReview[] => {
     const key = storage.getLocalKey('reviews');
+    const initKey = storage.getLocalKey('reviews_initialized');
     const data = localStorage.getItem(key);
-    if (data) {
+    if (data !== null) {
       try {
         const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
-    // Seed initial reviews if none exist yet
+    // If it was previously marked as initialized, return empty array
+    if (localStorage.getItem(initKey) === 'true') {
+      return [];
+    }
+    // Seed initial reviews if none exist yet on brand new setup
+    localStorage.setItem(initKey, 'true');
     localStorage.setItem(key, JSON.stringify(INITIAL_SEED_REVIEWS));
     return INITIAL_SEED_REVIEWS;
   },
@@ -604,6 +610,7 @@ export const storage = {
     const idx = revs.findIndex(r => r.id === rev.id);
     if (idx >= 0) revs[idx] = rev; else revs.unshift(rev);
     localStorage.setItem(storage.getLocalKey('reviews'), JSON.stringify(revs));
+    localStorage.setItem(storage.getLocalKey('reviews_initialized'), 'true');
     syncToFirebase('reviews', rev.id, rev);
   },
 
@@ -616,14 +623,28 @@ export const storage = {
         target.approvedAt = new Date().toISOString();
       }
       localStorage.setItem(storage.getLocalKey('reviews'), JSON.stringify(revs));
+      localStorage.setItem(storage.getLocalKey('reviews_initialized'), 'true');
       syncToFirebase('reviews', target.id, target);
     }
   },
 
   deleteReview: (id: string) => {
-    const revs = storage.getReviews().filter(r => r.id !== id);
-    localStorage.setItem(storage.getLocalKey('reviews'), JSON.stringify(revs));
+    const key = storage.getLocalKey('reviews');
+    const initKey = storage.getLocalKey('reviews_initialized');
+    localStorage.setItem(initKey, 'true');
+    const current = storage.getReviews();
+    const revs = current.filter(r => r.id !== id);
+    localStorage.setItem(key, JSON.stringify(revs));
     removeFromFirebase('reviews', id);
+  },
+
+  deleteAllReviews: () => {
+    const key = storage.getLocalKey('reviews');
+    const initKey = storage.getLocalKey('reviews_initialized');
+    const current = storage.getReviews();
+    localStorage.setItem(initKey, 'true');
+    localStorage.setItem(key, JSON.stringify([]));
+    current.forEach(r => removeFromFirebase('reviews', r.id));
   },
 
   savePublicReview: async (tenantId: string, rev: CustomerReview) => {
@@ -640,6 +661,7 @@ export const storage = {
     const idx = list.findIndex(r => r.id === rev.id);
     if (idx >= 0) list[idx] = rev; else list.unshift(rev);
     localStorage.setItem(localKey, JSON.stringify(list));
+    localStorage.setItem(`pplus_${tenantId}_reviews_initialized`, 'true');
 
     // Also update current tenant's local reviews if current tenant is matching
     if (tenantId === auth.currentUser?.uid || tenantId === 'default') {
@@ -647,6 +669,7 @@ export const storage = {
       const myIdx = myRevs.findIndex(r => r.id === rev.id);
       if (myIdx >= 0) myRevs[myIdx] = rev; else myRevs.unshift(rev);
       localStorage.setItem(storage.getLocalKey('reviews'), JSON.stringify(myRevs));
+      localStorage.setItem(storage.getLocalKey('reviews_initialized'), 'true');
     }
   },
 
@@ -658,21 +681,28 @@ export const storage = {
     try {
       const path = `tenants/${tenantId}`;
       const snap = await getDocs(collection(db, `${path}/reviews`));
-      const remote = snap.docs.map(d => d.data() as CustomerReview);
-      if (remote.length > 0) {
+      if (!snap.empty) {
+        const remote = snap.docs.map(d => d.data() as CustomerReview);
         return remote.filter(r => r.status === 'APPROVED');
+      } else {
+        return [];
       }
     } catch (e) {}
 
     const localKey = `pplus_${tenantId}_reviews`;
     const local = localStorage.getItem(localKey);
-    if (local) {
+    if (local !== null) {
       try {
         const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed.filter((r: CustomerReview) => r.status === 'APPROVED');
         }
       } catch (e) {}
+    }
+
+    const initKey = `pplus_${tenantId}_reviews_initialized`;
+    if (localStorage.getItem(initKey) === 'true') {
+      return [];
     }
 
     return INITIAL_SEED_REVIEWS.filter(r => r.status === 'APPROVED');

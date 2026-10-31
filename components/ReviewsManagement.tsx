@@ -52,6 +52,14 @@ const ReviewsManagement: React.FC<Props> = ({ onReviewsUpdated }) => {
     }
   };
 
+  const handleDeleteAll = () => {
+    if (window.confirm('Atenção: Tem certeza que deseja excluir TODAS as avaliações? Elas não voltarão após a exclusão.')) {
+      storage.deleteAllReviews();
+      loadReviews();
+      if (onReviewsUpdated) onReviewsUpdated();
+    }
+  };
+
   const handleCreateReview = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustomerName.trim() || !newMessage.trim()) {
@@ -125,6 +133,16 @@ const ReviewsManagement: React.FC<Props> = ({ onReviewsUpdated }) => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {reviews.length > 0 && (
+            <button
+              onClick={handleDeleteAll}
+              className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs rounded-2xl flex items-center gap-2 shadow-sm transition-all active:scale-95"
+              title="Excluir todas as avaliações permanentemente"
+            >
+              <Trash2 className="w-4 h-4" /> Excluir Todas ({reviews.length})
+            </button>
+          )}
+
           <button
             onClick={handleCopyReviewLink}
             className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 hover:border-indigo-300 hover:text-indigo-600 font-bold text-xs rounded-2xl flex items-center gap-2 shadow-sm transition-all"
